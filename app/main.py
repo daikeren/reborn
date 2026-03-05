@@ -34,6 +34,13 @@ async def lifespan(app: FastAPI):
     if shutil.which("gog") is None:
         logger.warning("gogcli (gog) not found on PATH; Google Workspace features will not work")
 
+    if not settings.telegram_enabled and not settings.slack_enabled:
+        raise RuntimeError(
+            "At least one channel must be configured. "
+            "Set TELEGRAM_BOT_TOKEN + ALLOWED_TELEGRAM_USER_ID and/or "
+            "SLACK_BOT_TOKEN + SLACK_APP_TOKEN + ALLOWED_SLACK_USER_ID in .env"
+        )
+
     db_path = settings.workspace_dir / "sessions.db"
     store = SessionStore(db_path)
     app.state.session_store = store
@@ -41,38 +48,53 @@ async def lifespan(app: FastAPI):
     logger.info("Session store initialized at {}", db_path)
 
     # Telegram (long polling in background task)
-    tg_app = create_telegram_app(settings.telegram_bot_token, manager)
-    await tg_app.initialize()
-    await tg_app.start()
-    await tg_app.updater.start_polling(drop_pending_updates=True)
-    logger.info(
-        "Telegram polling started for allowed_user_id={}",
-        settings.allowed_telegram_user_id,
-    )
+    tg_app = None
+    if settings.telegram_enabled:
+        tg_app = create_telegram_app(settings.telegram_bot_token, manager)
+        await tg_app.initialize()
+        await tg_app.start()
+        await tg_app.updater.start_polling(drop_pending_updates=True)
+        logger.info(
+            "Telegram polling started for allowed_user_id={}",
+            settings.allowed_telegram_user_id,
+        )
+    else:
+        logger.info("Telegram channel disabled (no token configured)")
 
     # Slack (Socket Mode in background task)
-    _slack_app, slack_handler = create_slack_app(
-        bot_token=settings.slack_bot_token,
-        app_token=settings.slack_app_token,
-        session_manager=manager,
-    )
-    slack_task = asyncio.create_task(slack_handler.start_async())
-    logger.info("Slack Socket Mode started for allowed_user_id={}", settings.allowed_slack_user_id)
+    slack_handler = None
+    slack_task = None
+    if settings.slack_enabled:
+        _slack_app, slack_handler = create_slack_app(
+            bot_token=settings.slack_bot_token,
+            app_token=settings.slack_app_token,
+            session_manager=manager,
+        )
+        slack_task = asyncio.create_task(slack_handler.start_async())
+        logger.info("Slack Socket Mode started for allowed_user_id={}", settings.allowed_slack_user_id)
+    else:
+        logger.info("Slack channel disabled (no token configured)")
 
-    # Scheduler (proactive jobs)
-    await start_scheduler(tg_app.bot)
-    logger.info("Scheduler startup completed")
+    # Scheduler (proactive jobs — requires Telegram for delivery)
+    if tg_app is not None:
+        await start_scheduler(tg_app.bot)
+        logger.info("Scheduler startup completed")
+    else:
+        logger.info("Scheduler skipped (requires Telegram for delivery)")
 
     yield
 
     # --- Shutdown ---
     logger.info("Service shutdown started")
     shutdown_scheduler()
-    await tg_app.updater.stop()
-    await tg_app.stop()
-    await tg_app.shutdown()
-    await slack_handler.close_async()
-    slack_task.cancel()
+    if tg_app is not None:
+        await tg_app.updater.stop()
+        await tg_app.stop()
+        await tg_app.shutdown()
+    if slack_handler is not None:
+        await slack_handler.close_async()
+    if slack_task is not None:
+        slack_task.cancel()
     store.close()
     logger.info("Service shutdown complete")
 

@@ -24,18 +24,32 @@ class Settings:
         default_factory=lambda: os.getenv("ANTHROPIC_API_KEY")
     )
 
-    # Telegram
-    telegram_bot_token: str = field(default_factory=lambda: _require("TELEGRAM_BOT_TOKEN"))
-    allowed_telegram_user_id: int = field(
-        default_factory=lambda: int(_require("ALLOWED_TELEGRAM_USER_ID"))
+    # Telegram (optional — omit to disable Telegram channel)
+    telegram_bot_token: str | None = field(
+        default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN")
+    )
+    allowed_telegram_user_id: int | None = field(
+        default_factory=lambda: int(v) if (v := os.getenv("ALLOWED_TELEGRAM_USER_ID")) else None
     )
 
-    # Slack
-    slack_bot_token: str = field(default_factory=lambda: _require("SLACK_BOT_TOKEN"))
-    slack_app_token: str = field(default_factory=lambda: _require("SLACK_APP_TOKEN"))
-    allowed_slack_user_id: str = field(
-        default_factory=lambda: _require("ALLOWED_SLACK_USER_ID")
+    # Slack (optional — omit to disable Slack channel)
+    slack_bot_token: str | None = field(
+        default_factory=lambda: os.getenv("SLACK_BOT_TOKEN")
     )
+    slack_app_token: str | None = field(
+        default_factory=lambda: os.getenv("SLACK_APP_TOKEN")
+    )
+    allowed_slack_user_id: str | None = field(
+        default_factory=lambda: os.getenv("ALLOWED_SLACK_USER_ID")
+    )
+
+    @property
+    def telegram_enabled(self) -> bool:
+        return bool(self.telegram_bot_token and self.allowed_telegram_user_id)
+
+    @property
+    def slack_enabled(self) -> bool:
+        return bool(self.slack_bot_token and self.slack_app_token and self.allowed_slack_user_id)
 
     # Paths
     workspace_dir: Path = field(

@@ -44,7 +44,7 @@ Reborn 是一個以 FastAPI 為核心的個人 AI 助理服務，整合 Telegram
 
 ### 1) 需求
 
-- Python `>=3.12`
+- Python `>=3.10`
 - `uv`
 - 若使用 `AGENT_BACKEND=codex`：需安裝並登入 Codex CLI（`codex login`）
 - 若使用 Google Workspace：需安裝 [gogcli](https://github.com/steipete/gogcli) 並執行 `gog auth add`
@@ -61,13 +61,10 @@ uv sync --dev
 cp .env.example .env
 ```
 
-至少要填入：
+至少啟用一個通道（Telegram 或 Slack）：
 
-- `TELEGRAM_BOT_TOKEN`
-- `ALLOWED_TELEGRAM_USER_ID`
-- `SLACK_BOT_TOKEN`
-- `SLACK_APP_TOKEN`
-- `ALLOWED_SLACK_USER_ID`
+- Telegram：填入 `TELEGRAM_BOT_TOKEN` + `ALLOWED_TELEGRAM_USER_ID`
+- Slack：填入 `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` + `ALLOWED_SLACK_USER_ID`
 
 ### 4) 啟動服務
 
@@ -75,11 +72,11 @@ cp .env.example .env
 uv run uvicorn app.main:app --reload
 ```
 
-啟動時會同時：
+啟動時會依設定：
 
-- 啟動 Telegram polling
-- 啟動 Slack Socket Mode
-- 啟動 scheduler（3 個排程任務）
+- 啟動 Telegram polling（需設定 Telegram token）
+- 啟動 Slack Socket Mode（需設定 Slack token）
+- 啟動 scheduler（需 Telegram 通道，用於排程訊息投遞）
 
 啟動後可在瀏覽器開啟：
 
@@ -109,11 +106,11 @@ uv run python scripts/session_history.py --session-key "telegram:dm" --limit 200
 | `AGENT_BACKEND` | `codex` 或 `claude` | 否（預設 `codex`） |
 | `CHAT_MODEL` | 即時對話模型 | 否 |
 | `BACKGROUND_MODEL` | 排程任務模型 | 否 |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot token | 是 |
-| `ALLOWED_TELEGRAM_USER_ID` | 允許的 Telegram user id | 是 |
-| `SLACK_BOT_TOKEN` | Slack Bot token | 是 |
-| `SLACK_APP_TOKEN` | Slack App token（Socket Mode） | 是 |
-| `ALLOWED_SLACK_USER_ID` | 允許的 Slack user id | 是 |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot token | 至少啟用一個通道 |
+| `ALLOWED_TELEGRAM_USER_ID` | 允許的 Telegram user id | 同上 |
+| `SLACK_BOT_TOKEN` | Slack Bot token | 同上 |
+| `SLACK_APP_TOKEN` | Slack App token（Socket Mode） | 同上 |
+| `ALLOWED_SLACK_USER_ID` | 允許的 Slack user id | 同上 |
 | `WORKSPACE_DIR` | workspace 路徑 | 否（預設 `workspace`） |
 | `TIMEZONE` | 排程與 session reset 時區 | 否（預設 `Asia/Taipei`） |
 | `OBSIDIAN_VAULT_PATH` | Obsidian vault 路徑（可寫入 sandbox roots） | 否 |
@@ -129,8 +126,8 @@ uv run python scripts/session_history.py --session-key "telegram:dm" --limit 200
 
 `WORKSPACE_DIR`（預設 `workspace/`）建議包含：
 
-- `SOUL.md`：身份、行為準則、工具指南（你寫給 Dio 的一切）
-- `MEMORY.md`：事實記憶（Dio 自己維護的偏好、人物、公司資訊）
+- `SOUL.md`：身份、行為準則、工具指南
+- `MEMORY.md`：事實記憶（助理自己維護的偏好、人物、公司資訊）
 - `memory/YYYY-MM-DD.md`：每日記錄
 - `prompts/heartbeat.md`
 - `prompts/morning_brief.md`

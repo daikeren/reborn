@@ -21,7 +21,7 @@ Always run Python tooling through `uv run` (for example, `uv run pytest`, not pl
 Use `.env.example` as the template for local configuration.
 
 ## Coding Style & Naming Conventions
-Target Python `>=3.12`, 4-space indentation, and PEP 8-style formatting. Follow existing patterns:
+Target Python `>=3.10`, 4-space indentation, and PEP 8-style formatting. Follow existing patterns:
 - modules/files: `snake_case.py`
 - functions/variables: `snake_case`
 - classes/dataclasses: `PascalCase`

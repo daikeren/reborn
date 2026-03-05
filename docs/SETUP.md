@@ -4,7 +4,7 @@ This guide walks you through setting up your own instance of Reborn after clonin
 
 ## Prerequisites
 
-- Python >= 3.12
+- Python >= 3.10
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - One of the following LLM backends:
   - **Codex** (default): Install [Codex CLI](https://github.com/openai/codex) and run `codex login`
@@ -22,15 +22,15 @@ uv sync --dev
 cp .env.example .env
 ```
 
-Edit `.env` and fill in the required values:
+Edit `.env` and configure **at least one channel** (Telegram or Slack, or both):
 
-### Required: Telegram
+### Telegram (optional)
 
 1. Talk to [@BotFather](https://t.me/BotFather) on Telegram to create a new bot
 2. Copy the bot token to `TELEGRAM_BOT_TOKEN`
 3. Find your Telegram user ID (you can use [@userinfobot](https://t.me/userinfobot)) and set `ALLOWED_TELEGRAM_USER_ID`
 
-### Required: Slack
+### Slack (optional)
 
 1. Create a Slack App at [api.slack.com/apps](https://api.slack.com/apps)
 2. Enable **Socket Mode** and generate an app-level token (`xapp-...`) -> `SLACK_APP_TOKEN`
@@ -38,6 +38,8 @@ Edit `.env` and fill in the required values:
    - `chat:write`, `reactions:write`, `channels:history`, `groups:history`, `im:history`, `files:read`
 4. Install the app to your workspace and copy the bot token (`xoxb-...`) -> `SLACK_BOT_TOKEN`
 5. Find your Slack user ID (Profile -> three dots -> Copy member ID) -> `ALLOWED_SLACK_USER_ID`
+
+> **Note**: Scheduled jobs (heartbeat, morning brief, weekly review) are delivered via Telegram. If you only enable Slack, the scheduler will be skipped.
 
 ### Optional: Backend Selection
 
@@ -186,8 +188,8 @@ OBSIDIAN_VAULT_PATH=/path/to/your/vault
 
 ## Troubleshooting
 
-### "Missing required environment variable"
-You're missing a required token in `.env`. Check `TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `ALLOWED_SLACK_USER_ID`.
+### "At least one channel must be configured"
+You need to set up either Telegram or Slack (or both) in `.env`. See Step 2 above.
 
 ### "gogcli (gog) not found on PATH"
 This is a warning, not an error. Google Workspace features won't work, but the service will still start.
