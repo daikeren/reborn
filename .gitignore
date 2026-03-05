@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets
+.env
+client_secret*.json
+
+# Runtime data
+workspace/sessions.db*
+workspace/memory/*.md
+
+# Personal workspace files (use *.example as templates)
+workspace/SOUL.md
+workspace/MEMORY.md
+
+# Planning artifacts
+plan.md
