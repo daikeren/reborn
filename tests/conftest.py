@@ -25,6 +25,7 @@ def workspace(tmp_path: Path):
         chat_model: str = "gpt-5.4"
         background_model: str = "gpt-5.4"
         obsidian_vault_path: Path | None = None
+        extra_writable_roots: tuple[Path, ...] = ()
         codex_app_server_command: tuple[str, ...] = ("codex", "app-server")
         codex_approval_policy: str = "never"
         codex_sandbox_mode: str = "workspace-write"

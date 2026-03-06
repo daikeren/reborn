@@ -51,7 +51,7 @@ class ClaudeBackend:
         if not enable_skills:
             return None, None
 
-        loaded = load_all_skills()
+        loaded = load_all_skills(available_only=True)
         if not loaded:
             return None, None
 
@@ -187,6 +187,7 @@ class ClaudeBackend:
             permission_mode="bypassPermissions",
             max_turns=max_turns,
             env=env,
+            add_dirs=[str(path) for path in settings.extra_writable_roots],
             agents=agents,
             can_use_tool=can_use_tool_cb,
             hooks=hooks,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
@@ -32,11 +31,6 @@ async def lifespan(app: FastAPI):
     )
 
     # --- Startup ---
-    if shutil.which("gog") is None:
-        logger.warning(
-            "gogcli (gog) not found on PATH; Google Workspace features will not work"
-        )
-
     if not settings.telegram_enabled and not settings.slack_enabled:
         raise RuntimeError(
             "At least one channel must be configured. "

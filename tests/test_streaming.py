@@ -294,6 +294,11 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
             "path": "/tmp/skills/disabled/SKILL.md",
             "description": "",
         },
+        {
+            "name": "google-workspace",
+            "path": "/tmp/skills/google-workspace/SKILL.md",
+            "description": "Google Workspace",
+        },
     ]
 
     captured_prompt_kwargs = {}
@@ -307,6 +312,7 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
     monkeypatch.setattr(
         "app.agent.backends.codex_backend.build_system_prompt", _capture_prompt
     )
+    monkeypatch.setattr("app.agent.skills.shutil.which", lambda name: None)
 
     await backend.agent_turn("hello", enable_skills=True)
     assert client.turn_kwargs is not None
@@ -317,6 +323,11 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
         for item in input_items
     )
     assert "web-researcher" in captured_prompt_kwargs["skills"]
+    assert not any(
+        item.get("type") == "skill" and item.get("name") == "google-workspace"
+        for item in input_items
+    )
+    assert "google-workspace" not in captured_prompt_kwargs["skills"]
 
 
 @pytest.mark.asyncio
@@ -348,7 +359,7 @@ async def test_long_unbroken_text_is_wrapped_before_codex_calls(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sandbox_policy_includes_obsidian_vault(
+async def test_sandbox_policy_includes_extra_writable_roots(
     monkeypatch, workspace: Path, obsidian_vault: Path
 ):
     import app.config
@@ -369,6 +380,7 @@ async def test_sandbox_policy_includes_obsidian_vault(
         chat_model: str = "gpt-5.4"
         background_model: str = "gpt-5.4"
         obsidian_vault_path: Path | None = obsidian_vault
+        extra_writable_roots: tuple[Path, ...] = (obsidian_vault,)
         codex_app_server_command: tuple[str, ...] = ("codex", "app-server")
         codex_approval_policy: str = "never"
         codex_sandbox_mode: str = "workspace-write"

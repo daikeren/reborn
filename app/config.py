@@ -10,6 +10,32 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _resolve_path(value: str) -> Path:
+    return Path(value).expanduser().resolve()
+
+
+def _parse_extra_writable_roots() -> tuple[Path, ...]:
+    roots: list[Path] = []
+    raw = os.getenv("EXTRA_WRITABLE_ROOTS", "")
+    legacy = os.getenv("OBSIDIAN_VAULT_PATH")
+
+    if raw:
+        roots.extend(
+            _resolve_path(part.strip()) for part in raw.split(",") if part.strip()
+        )
+    if legacy:
+        roots.append(_resolve_path(legacy))
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        if root in seen:
+            continue
+        seen.add(root)
+        unique.append(root)
+    return tuple(unique)
+
+
 def _require(key: str) -> str:
     val = os.getenv(key)
     if not val:
@@ -57,12 +83,15 @@ class Settings:
 
     # Paths
     workspace_dir: Path = field(
-        default_factory=lambda: Path(os.getenv("WORKSPACE_DIR", "workspace")).resolve()
+        default_factory=lambda: _resolve_path(os.getenv("WORKSPACE_DIR", "workspace"))
     )
     obsidian_vault_path: Path | None = field(
         default_factory=lambda: (
-            Path(p).resolve() if (p := os.getenv("OBSIDIAN_VAULT_PATH")) else None
+            _resolve_path(p) if (p := os.getenv("OBSIDIAN_VAULT_PATH")) else None
         )
+    )
+    extra_writable_roots: tuple[Path, ...] = field(
+        default_factory=_parse_extra_writable_roots
     )
     # Timezone
     timezone: str = field(default_factory=lambda: os.getenv("TIMEZONE", "Asia/Taipei"))

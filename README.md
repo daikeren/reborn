@@ -20,7 +20,6 @@ Reborn is a personal AI assistant service that integrates Telegram and Slack, wi
   - `weekly_review`: every Friday at `18:00`.
 - MCP capabilities
   - Built-in memory MCP for writing, searching, and updating `workspace/MEMORY.md`.
-  - Optional Google Workspace integration via `gogcli` for Calendar, Gmail, Drive, and Tasks.
 - Switchable model backends
   - `codex` (default)
   - `claude`
@@ -36,9 +35,7 @@ Reborn is a personal AI assistant service that integrates Telegram and Slack, wi
 - Agent Runtime:
   - Backend factory (`codex` / `claude`)
   - System prompt assembly from `workspace/SOUL.md`, `workspace/MEMORY.md`, recent two-day memory logs, and loaded skills
-- MCP:
-  - `app.mcp.server` exposes memory tools
-  - Google Workspace can be attached through the `gogcli` skill
+- MCP: `app.mcp.server` exposes memory tools
 
 ## Quick Start
 
@@ -47,7 +44,6 @@ Reborn is a personal AI assistant service that integrates Telegram and Slack, wi
 - Python `>=3.10`
 - `uv`
 - If using `AGENT_BACKEND=codex`: install and log in to the Codex CLI with `codex login`
-- If using Google Workspace: install [gogcli](https://github.com/steipete/gogcli) and run `gog auth add`
 
 ### 2) Install dependencies
 
@@ -135,8 +131,9 @@ uv run python scripts/session_history.py --session-key "telegram:dm" --limit 200
 | `ALLOWED_SLACK_USER_ID` | Allowed Slack user ID | Same as above |
 | `WORKSPACE_DIR` | Workspace path | No (default: `workspace`) |
 | `TIMEZONE` | Time zone for scheduling and session resets | No (default: `Asia/Taipei`) |
-| `OBSIDIAN_VAULT_PATH` | Obsidian vault path (must be writable within sandbox roots) | No |
-| `GOG_ACCOUNT` | Google account for `gogcli` (requires `gog auth add` first) | No |
+| `EXTRA_WRITABLE_ROOTS` | Comma-separated writable paths outside `WORKSPACE_DIR`, shared by both backends | No |
+| `OBSIDIAN_VAULT_PATH` | Deprecated alias for a single external writable path | No |
+| `GOG_ACCOUNT` | Google account for the optional `google-workspace` skill (requires `gog auth add`) | No |
 | `CODEX_APP_SERVER_COMMAND` | Command used to start the Codex app server | No |
 | `CODEX_APPROVAL_POLICY` | Codex approval policy | No |
 | `CODEX_SANDBOX_MODE` | Codex sandbox mode | No |
@@ -176,6 +173,12 @@ curl -fsSL https://raw.githubusercontent.com/daikeren/reborn/main/scripts/instal
 3. Let the skill clone the repo, run `uv sync --dev`, inspect readiness, apply setup, and verify.
 
 Manual setup is still documented in `docs/SETUP.md`.
+
+## Advanced Integrations
+
+- `google-workspace`: install [gogcli](https://github.com/steipete/gogcli), run `gog auth add`, then keep `workspace/skills/google-workspace/`.
+- Obsidian skills: point `EXTRA_WRITABLE_ROOTS` at your vault root so the runtime can access it, then keep `workspace/skills/obsidian-markdown/` or `workspace/skills/obsidian-bases/`.
+- Skills with unmet prerequisites stay on disk but are not exposed to the runtime.
 
 ## Scheduled Job Customization
 
