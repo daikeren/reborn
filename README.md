@@ -1,6 +1,6 @@
 # Reborn 
 
-Reborn 是一個以 FastAPI 為核心的個人 AI 助理服務，整合 Telegram 與 Slack，支援主動排程提醒、持久化對話 session、記憶（MCP）與可擴充 skills。
+Reborn 是一個個人 AI 助理服務，整合 Telegram 與 Slack，支援主動排程提醒、持久化對話 session、記憶（MCP）與可擴充 skills。
 
 ## 主要功能
 
