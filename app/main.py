@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
     logger.info("Service shutdown complete")
 
 
-app = FastAPI(title="Reeve", lifespan=lifespan)
+app = FastAPI(title="Reborn", lifespan=lifespan)
 
 
 def _store() -> SessionStore:

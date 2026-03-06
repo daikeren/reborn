@@ -13,7 +13,7 @@ from app.agent.system_prompt import (
 
 @pytest.fixture(autouse=True)
 def _soul_file(workspace: Path):
-    (workspace / "SOUL.md").write_text("You are Reeve.")
+    (workspace / "SOUL.md").write_text("You are Reborn.")
 
 
 def test_slack_channel_includes_mrkdwn_guidance(workspace: Path):

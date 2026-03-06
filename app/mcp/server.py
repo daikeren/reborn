@@ -13,7 +13,7 @@ def create_server():
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("fastmcp is required to run app.mcp.server") from exc
 
-    mcp = FastMCP("reeve-memory")
+    mcp = FastMCP("reborn-memory")
 
     @mcp.tool()
     async def memory_write(content: str, category: str) -> str:

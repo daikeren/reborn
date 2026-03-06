@@ -63,7 +63,7 @@ class CodexAppServerClient:
     async def initialize(self) -> None:
         await self._request(
             "initialize",
-            {"clientInfo": {"name": "reeve", "version": "0.1.0"}},
+            {"clientInfo": {"name": "reborn", "version": "0.1.0"}},
         )
         await self._send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
 

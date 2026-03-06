@@ -5,7 +5,7 @@ MONITOR_PAGE_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reeve - Session Monitor</title>
+  <title>Reborn - Session Monitor</title>
   <style>
     :root {
       --bg: #eef2f7;
