@@ -51,7 +51,7 @@ class ClaudeBackend:
         if not enable_skills:
             return None, None
 
-        loaded = load_all_skills(available_only=True)
+        loaded = load_all_skills()
         if not loaded:
             return None, None
 

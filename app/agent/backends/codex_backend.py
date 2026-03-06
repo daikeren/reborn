@@ -7,7 +7,6 @@ from typing import Any
 
 from app.agent.backends.base import DEFAULT_TOOLS
 from app.agent.codex_client import CodexAppServerClient, CodexClientError
-from app.agent.skills import filter_available_skill_rows
 from app.agent.system_prompt import build_system_prompt
 from app.agent.types import AgentError, AgentResult, Attachment
 from app.config import settings
@@ -110,7 +109,6 @@ class CodexBackend:
         self, client: CodexAppServerClient
     ) -> tuple[list[dict[str, str]], dict[str, str]]:
         skills = await client.list_skills(cwd=str(settings.workspace_dir))
-        skills = filter_available_skill_rows(skills)
         skill_inputs: list[dict[str, str]] = []
         skill_descriptions: dict[str, str] = {}
         for skill in skills:

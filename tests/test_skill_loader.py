@@ -5,12 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.agent.skills import (
-    filter_available_skill_rows,
-    is_skill_available,
-    load_all_skills,
-    load_skill,
-)
+from app.agent.skills import load_all_skills, load_skill
 
 
 @pytest.fixture()
@@ -286,54 +281,3 @@ description: {name} skill
         )
     result = load_all_skills()
     assert list(result.keys()) == ["alpha", "bravo", "charlie"]
-
-
-def test_load_all_skills_available_only_filters_gated_skills(
-    skills_dir: Path, monkeypatch
-):
-    _write_skill(
-        skills_dir,
-        "google-workspace",
-        """\
----
-description: Google Workspace
----
-Use gog.
-""",
-    )
-    _write_skill(
-        skills_dir,
-        "web-researcher",
-        """\
----
-description: Research
----
-Use the web.
-""",
-    )
-    monkeypatch.setattr("app.agent.skills.shutil.which", lambda name: None)
-    result = load_all_skills(
-        available_only=True,
-    )
-
-    assert "web-researcher" in result
-    assert "google-workspace" not in result
-
-
-def test_is_skill_available_for_google_workspace():
-    assert is_skill_available("google-workspace", gog_available=True) is True
-    assert is_skill_available("google-workspace", gog_available=False) is False
-
-
-def test_filter_available_skill_rows():
-    rows = [
-        {"name": "google-workspace"},
-        {"name": "web-researcher"},
-    ]
-
-    filtered = filter_available_skill_rows(
-        rows,
-        gog_available=False,
-    )
-
-    assert [row["name"] for row in filtered] == ["web-researcher"]

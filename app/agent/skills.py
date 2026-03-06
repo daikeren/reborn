@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from app.config import settings
 from app.frontmatter import parse_frontmatter
@@ -53,46 +52,7 @@ def load_skill(path: Path) -> tuple[str, SkillDefinition]:
     )
 
 
-def is_skill_available(
-    name: str,
-    *,
-    gog_available: bool | None = None,
-) -> bool:
-    if name == "google-workspace":
-        if gog_available is not None:
-            return gog_available
-        return shutil.which("gog") is not None
-    return True
-
-
-def filter_available_skill_rows(
-    skills: list[dict[str, Any]],
-    *,
-    gog_available: bool | None = None,
-) -> list[dict[str, Any]]:
-    filtered: list[dict[str, Any]] = []
-    for skill in skills:
-        name = skill.get("name")
-        if not isinstance(name, str):
-            continue
-        if is_skill_available(name, gog_available=gog_available):
-            filtered.append(skill)
-    return filtered
-
-
-def filter_available_skills(
-    skills: dict[str, SkillDefinition],
-    *,
-    gog_available: bool | None = None,
-) -> dict[str, SkillDefinition]:
-    return {
-        name: defn
-        for name, defn in skills.items()
-        if is_skill_available(name, gog_available=gog_available)
-    }
-
-
-def load_all_skills(*, available_only: bool = False) -> dict[str, SkillDefinition]:
+def load_all_skills() -> dict[str, SkillDefinition]:
     """Scan ``workspace/skills/*/SKILL.md`` and return a sorted dict of skills.
 
     Symlink directories are skipped.  Individual file errors are logged as
@@ -115,6 +75,4 @@ def load_all_skills(*, available_only: bool = False) -> dict[str, SkillDefinitio
         except Exception:
             logger.warning("Skipping invalid skill: %s", entry.name, exc_info=True)
 
-    if available_only:
-        return filter_available_skills(result)
     return result

@@ -312,7 +312,6 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
     monkeypatch.setattr(
         "app.agent.backends.codex_backend.build_system_prompt", _capture_prompt
     )
-    monkeypatch.setattr("app.agent.skills.shutil.which", lambda name: None)
 
     await backend.agent_turn("hello", enable_skills=True)
     assert client.turn_kwargs is not None
@@ -322,12 +321,12 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
         item.get("type") == "skill" and item.get("name") == "web-researcher"
         for item in input_items
     )
-    assert "web-researcher" in captured_prompt_kwargs["skills"]
-    assert not any(
+    assert any(
         item.get("type") == "skill" and item.get("name") == "google-workspace"
         for item in input_items
     )
-    assert "google-workspace" not in captured_prompt_kwargs["skills"]
+    assert "web-researcher" in captured_prompt_kwargs["skills"]
+    assert "google-workspace" in captured_prompt_kwargs["skills"]
 
 
 @pytest.mark.asyncio
