@@ -187,6 +187,7 @@ class ClaudeBackend:
             permission_mode="bypassPermissions",
             max_turns=max_turns,
             env=env,
+            add_dirs=[str(path) for path in settings.extra_writable_roots],
             agents=agents,
             can_use_tool=can_use_tool_cb,
             hooks=hooks,

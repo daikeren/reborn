@@ -57,8 +57,3 @@ You have three memory tools:
 ## Web Search
 
 - Use `WebSearch` and `WebFetch` for current events, recent information, fact-checking
-
-## Optional Tools
-
-- Use the `google-workspace` skill only when gogcli is installed and authenticated
-- Use Obsidian tools only when an Obsidian vault path is configured

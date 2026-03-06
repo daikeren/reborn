@@ -294,6 +294,11 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
             "path": "/tmp/skills/disabled/SKILL.md",
             "description": "",
         },
+        {
+            "name": "google-workspace",
+            "path": "/tmp/skills/google-workspace/SKILL.md",
+            "description": "Google Workspace",
+        },
     ]
 
     captured_prompt_kwargs = {}
@@ -316,7 +321,12 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
         item.get("type") == "skill" and item.get("name") == "web-researcher"
         for item in input_items
     )
+    assert any(
+        item.get("type") == "skill" and item.get("name") == "google-workspace"
+        for item in input_items
+    )
     assert "web-researcher" in captured_prompt_kwargs["skills"]
+    assert "google-workspace" in captured_prompt_kwargs["skills"]
 
 
 @pytest.mark.asyncio
@@ -348,8 +358,8 @@ async def test_long_unbroken_text_is_wrapped_before_codex_calls(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sandbox_policy_includes_obsidian_vault(
-    monkeypatch, workspace: Path, obsidian_vault: Path
+async def test_sandbox_policy_includes_extra_writable_roots(
+    monkeypatch, workspace: Path, external_root: Path
 ):
     import app.config
 
@@ -368,7 +378,7 @@ async def test_sandbox_policy_includes_obsidian_vault(
         agent_backend: str = "codex"
         chat_model: str = "gpt-5.4"
         background_model: str = "gpt-5.4"
-        obsidian_vault_path: Path | None = obsidian_vault
+        extra_writable_roots: tuple[Path, ...] = (external_root,)
         codex_app_server_command: tuple[str, ...] = ("codex", "app-server")
         codex_approval_policy: str = "never"
         codex_sandbox_mode: str = "workspace-write"
@@ -385,6 +395,6 @@ async def test_sandbox_policy_includes_obsidian_vault(
         await backend.agent_turn("hello")
         roots = client.turn_kwargs["sandbox_policy"]["writableRoots"]
         assert str(workspace) in roots
-        assert str(obsidian_vault) in roots
+        assert str(external_root) in roots
     finally:
         app.config._settings = old

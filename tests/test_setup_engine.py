@@ -39,6 +39,7 @@ def test_inspect_reports_missing_core_state(tmp_path: Path, monkeypatch):
     )
     assert result["workspace"]["soul_exists"] is False
     assert result["workspace"]["memory_exists"] is False
+    assert result["warnings"] == []
 
 
 def test_apply_creates_env_and_workspace_files(tmp_path: Path):
@@ -158,8 +159,9 @@ def test_default_templates_are_optional_safe():
     assert "gog calendar events" not in heartbeat
     assert "gog calendar events" not in morning
     assert "gog calendar events" not in weekly
-    assert "obsidian_*" not in morning
-    assert "Use Obsidian tools only when an Obsidian vault path is configured" in soul
+    assert "EXTRA_WRITABLE_ROOTS" not in morning
+    assert "google-workspace" not in soul
+    assert "Obsidian" not in soul
 
 
 def test_install_setup_skill_defaults_to_codex_dir(tmp_path: Path, monkeypatch):

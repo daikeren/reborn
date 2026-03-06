@@ -20,6 +20,8 @@ Your job is to install Reborn into a user-chosen local directory and then run th
    - run `uv sync --dev`
    - run `uv run python -m app.setup inspect`
 7. Summarize blocking problems first, warnings second.
+   - Treat the setup engine as the source of truth for required configuration.
+   - Do not introduce extra setup steps for optional integrations or custom skills unless the user explicitly asks for them.
 8. Collect setup answers without writing files yet:
    - assistant name
    - owner name
@@ -44,6 +46,7 @@ Your job is to install Reborn into a user-chosen local directory and then run th
    - configured channels
    - `uv run uvicorn app.main:app --reload`
    - optional checks: `/health`, `/history`, `/monitor`
+   - mention `EXTRA_WRITABLE_ROOTS` or custom skills only if the user explicitly asked for external directories or custom workflows
 13. If verify fails, quote only the concrete blocking errors and offer the next corrective step.
 
 ## Suggested command snippets

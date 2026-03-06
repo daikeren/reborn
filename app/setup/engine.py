@@ -82,11 +82,6 @@ You have three memory tools:
 - **memory_update_core**: Update a section in core memory (MEMORY.md). Use when information is stable and permanent — not just daily context.
 
 **Important**: MEMORY.md and today/yesterday logs are already loaded in your system prompt. You do not need to search for recent items — just read the context above.
-
-## Optional Tools
-
-- Use the `google-workspace` skill only when gogcli is installed and authenticated.
-- Use Obsidian tools only when an Obsidian vault path is configured.
 """
 
 MEMORY_TEMPLATE = """## Preferences
@@ -321,7 +316,7 @@ def inspect_setup(repo_root: Path | None = None) -> SetupInspection:
         ),
         optional_integrations={
             "gog_installed": bool(shutil.which("gog")),
-            "obsidian_vault_configured": bool(env.get("OBSIDIAN_VAULT_PATH")),
+            "extra_writable_roots_configured": bool(env.get("EXTRA_WRITABLE_ROOTS")),
         },
     )
 
@@ -363,12 +358,6 @@ def inspect_setup(repo_root: Path | None = None) -> SetupInspection:
             f"Missing {Path(inspection.workspace.workspace_dir) / 'MEMORY.md'}"
         )
 
-    if not inspection.optional_integrations["gog_installed"]:
-        inspection.warnings.append("Optional integration unavailable: gogcli not found")
-    if not inspection.optional_integrations["obsidian_vault_configured"]:
-        inspection.warnings.append(
-            "Optional integration unavailable: OBSIDIAN_VAULT_PATH not configured"
-        )
     return inspection
 
 

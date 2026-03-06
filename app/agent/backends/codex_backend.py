@@ -31,10 +31,10 @@ class CodexBackend:
         return servers
 
     def _build_sandbox_policy(self) -> dict[str, Any]:
-        writable_roots = [str(settings.workspace_dir)]
-        vault = settings.obsidian_vault_path
-        if vault is not None:
-            writable_roots.append(str(vault))
+        writable_roots = [
+            str(root)
+            for root in (settings.workspace_dir, *settings.extra_writable_roots)
+        ]
         return {
             "type": "workspaceWrite",
             "networkAccess": True,
