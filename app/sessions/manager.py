@@ -145,9 +145,9 @@ class SessionManager:
             return None
 
         async def on_question(questions: list[dict]) -> dict[str, str]:
-            await send_question(questions)
             future = self.register_pending_question(session_key, questions)
             try:
+                await send_question(questions)
                 raw_reply: str = await asyncio.wait_for(
                     future, timeout=_QUESTION_TIMEOUT
                 )
