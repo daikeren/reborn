@@ -41,7 +41,9 @@ class CodexBackend:
             "writableRoots": writable_roots,
         }
 
-    def _allowed_tools_hint(self, allowed_tools: list[str] | None, max_turns: int) -> str:
+    def _allowed_tools_hint(
+        self, allowed_tools: list[str] | None, max_turns: int
+    ) -> str:
         if allowed_tools is None:
             return ""
         tools = ", ".join(allowed_tools) if allowed_tools else "(none)"
@@ -116,7 +118,9 @@ class CodexBackend:
             if not isinstance(name, str) or not isinstance(path, str):
                 continue
             skill_inputs.append({"type": "skill", "name": name, "path": path})
-            skill_descriptions[name] = description if isinstance(description, str) else ""
+            skill_descriptions[name] = (
+                description if isinstance(description, str) else ""
+            )
         return skill_inputs, skill_descriptions
 
     def _build_attachment_items(
@@ -134,15 +138,19 @@ class CodexBackend:
             else:
                 extracted = att.extract_text()
                 if extracted:
-                    items.append({
-                        "type": "text",
-                        "text": f"[Content of {att.filename}]\n{extracted}",
-                    })
+                    items.append(
+                        {
+                            "type": "text",
+                            "text": f"[Content of {att.filename}]\n{extracted}",
+                        }
+                    )
                 else:
-                    items.append({
-                        "type": "text",
-                        "text": f"[Attached file: {att.filename} ({att.mime_type}) — content could not be extracted]",
-                    })
+                    items.append(
+                        {
+                            "type": "text",
+                            "text": f"[Attached file: {att.filename} ({att.mime_type}) — content could not be extracted]",
+                        }
+                    )
         return items
 
     async def agent_turn(
@@ -234,53 +242,96 @@ class CodexBackend:
 
                         if note.method == "item/completed":
                             item = note.params.get("item", {})
-                            item_type = item.get("type") if isinstance(item, dict) else None
+                            item_type = (
+                                item.get("type") if isinstance(item, dict) else None
+                            )
 
                             if item_type == "contextCompaction":
                                 logger.info(
-                                    "Codex context compaction item (thread=%s)", thread_id
+                                    "Codex context compaction item (thread=%s)",
+                                    thread_id,
                                 )
                                 continue
 
                             if item_type == "toolUse" and on_event:
                                 tool_name = item.get("name", "unknown")
                                 tool_input = str(item.get("input", ""))
-                                await on_event(make_event(ExecutionEventKind.TOOL_USE, tool=tool_name, input=tool_input))
+                                await on_event(
+                                    make_event(
+                                        ExecutionEventKind.TOOL_USE,
+                                        tool=tool_name,
+                                        input=tool_input,
+                                    )
+                                )
                             elif item_type == "toolResult" and on_event:
                                 tool_output = str(item.get("output", ""))
-                                await on_event(make_event(ExecutionEventKind.TOOL_RESULT, output=tool_output))
+                                await on_event(
+                                    make_event(
+                                        ExecutionEventKind.TOOL_RESULT,
+                                        output=tool_output,
+                                    )
+                                )
                             elif item_type == "agentMessage":
                                 is_final = self._is_final_channel(note.params)
-                                text = item.get("text") if isinstance(item, dict) else None
+                                text = (
+                                    item.get("text") if isinstance(item, dict) else None
+                                )
                                 if is_final and isinstance(text, str):
                                     latest_final_text = text
                                     final_messages_seen += 1
                                     if on_event:
-                                        await on_event(make_event(ExecutionEventKind.TEXT_CHUNK, text=text))
+                                        await on_event(
+                                            make_event(
+                                                ExecutionEventKind.TEXT_CHUNK, text=text
+                                            )
+                                        )
                                 elif not is_final and on_event:
-                                    commentary_text = text if isinstance(text, str) else ""
-                                    await on_event(make_event(ExecutionEventKind.COMMENTARY, text=commentary_text))
+                                    commentary_text = (
+                                        text if isinstance(text, str) else ""
+                                    )
+                                    await on_event(
+                                        make_event(
+                                            ExecutionEventKind.COMMENTARY,
+                                            text=commentary_text,
+                                        )
+                                    )
                             continue
 
                         if note.method == "turn/completed":
                             if on_event:
-                                await on_event(make_event(ExecutionEventKind.TURN_COMPLETED))
+                                await on_event(
+                                    make_event(ExecutionEventKind.TURN_COMPLETED)
+                                )
                             turn = note.params.get("turn", {})
-                            if isinstance(turn, dict) and turn.get("status") == "failed":
+                            if (
+                                isinstance(turn, dict)
+                                and turn.get("status") == "failed"
+                            ):
                                 error = turn.get("error", "")
-                                if "contextWindowExceeded" in str(error) and not _compacted:
+                                if (
+                                    "contextWindowExceeded" in str(error)
+                                    and not _compacted
+                                ):
                                     _context_window_exceeded = True
                                 else:
                                     raise AgentError(f"Codex turn failed: {error}")
                 except (CodexClientError, AgentError):
                     if latest_final_text is not None and result_session_id:
-                        logger.warning("Agent turn partially failed; returning partial output")
-                        return AgentResult(text=latest_final_text, session_id=result_session_id)
+                        logger.warning(
+                            "Agent turn partially failed; returning partial output"
+                        )
+                        return AgentResult(
+                            text=latest_final_text, session_id=result_session_id
+                        )
                     raise
                 except Exception as exc:
                     if latest_final_text is not None and result_session_id:
-                        logger.warning("Agent turn partially failed: %s", exc, exc_info=True)
-                        return AgentResult(text=latest_final_text, session_id=result_session_id)
+                        logger.warning(
+                            "Agent turn partially failed: %s", exc, exc_info=True
+                        )
+                        return AgentResult(
+                            text=latest_final_text, session_id=result_session_id
+                        )
                     raise AgentError(f"Agent call failed: {exc}") from exc
 
                 if _context_window_exceeded:
@@ -299,7 +350,9 @@ class CodexBackend:
                 break
 
         dropped_intermediate = max(final_messages_seen - 1, 0)
-        selected_final_len = len(latest_final_text) if latest_final_text is not None else 0
+        selected_final_len = (
+            len(latest_final_text) if latest_final_text is not None else 0
+        )
         if final_messages_seen > 1:
             logger.warning(
                 "Codex turn emitted multiple final messages; using latest: final_messages_seen=%s, "

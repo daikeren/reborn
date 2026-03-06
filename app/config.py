@@ -29,7 +29,9 @@ class Settings:
         default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN")
     )
     allowed_telegram_user_id: int | None = field(
-        default_factory=lambda: int(v) if (v := os.getenv("ALLOWED_TELEGRAM_USER_ID")) else None
+        default_factory=lambda: (
+            int(v) if (v := os.getenv("ALLOWED_TELEGRAM_USER_ID")) else None
+        )
     )
 
     # Slack (optional — omit to disable Slack channel)
@@ -49,16 +51,18 @@ class Settings:
 
     @property
     def slack_enabled(self) -> bool:
-        return bool(self.slack_bot_token and self.slack_app_token and self.allowed_slack_user_id)
+        return bool(
+            self.slack_bot_token and self.slack_app_token and self.allowed_slack_user_id
+        )
 
     # Paths
     workspace_dir: Path = field(
         default_factory=lambda: Path(os.getenv("WORKSPACE_DIR", "workspace")).resolve()
     )
     obsidian_vault_path: Path | None = field(
-        default_factory=lambda: Path(p).resolve()
-        if (p := os.getenv("OBSIDIAN_VAULT_PATH"))
-        else None
+        default_factory=lambda: (
+            Path(p).resolve() if (p := os.getenv("OBSIDIAN_VAULT_PATH")) else None
+        )
     )
     # Timezone
     timezone: str = field(default_factory=lambda: os.getenv("TIMEZONE", "Asia/Taipei"))
@@ -90,7 +94,9 @@ class Settings:
         default_factory=lambda: float(os.getenv("CODEX_RPC_TIMEOUT_SECONDS", "120"))
     )
     codex_rpc_stream_limit_bytes: int = field(
-        default_factory=lambda: int(os.getenv("CODEX_RPC_STREAM_LIMIT_BYTES", str(1024 * 1024)))
+        default_factory=lambda: int(
+            os.getenv("CODEX_RPC_STREAM_LIMIT_BYTES", str(1024 * 1024))
+        )
     )
 
 

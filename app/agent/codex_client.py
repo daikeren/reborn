@@ -111,7 +111,9 @@ class CodexAppServerClient:
         )
         return result["thread"]["id"]
 
-    async def list_skills(self, *, cwd: str, force_reload: bool = True) -> list[dict[str, Any]]:
+    async def list_skills(
+        self, *, cwd: str, force_reload: bool = True
+    ) -> list[dict[str, Any]]:
         result = await self._request(
             "skills/list",
             {"cwds": [cwd], "forceReload": force_reload},
@@ -172,7 +174,11 @@ class CodexAppServerClient:
             note = self._to_notification(raw)
             if note is None:
                 continue
-            if note.params.get("turnId") and turn_id and note.params["turnId"] != turn_id:
+            if (
+                note.params.get("turnId")
+                and turn_id
+                and note.params["turnId"] != turn_id
+            ):
                 continue
             if note.method == "turn/completed":
                 turn = note.params.get("turn", {})
@@ -275,26 +281,41 @@ class CodexAppServerClient:
         if method == "item/tool/call":
             payload = {
                 "success": False,
-                "contentItems": [{"type": "inputText", "text": "Dynamic tool calls are not supported."}],
+                "contentItems": [
+                    {
+                        "type": "inputText",
+                        "text": "Dynamic tool calls are not supported.",
+                    }
+                ],
             }
             await self._send({"jsonrpc": "2.0", "id": request_id, "result": payload})
             return
         if method == "item/tool/requestUserInput":
-            await self._send({"jsonrpc": "2.0", "id": request_id, "result": {"answers": {}}})
+            await self._send(
+                {"jsonrpc": "2.0", "id": request_id, "result": {"answers": {}}}
+            )
             return
 
         await self._send(
             {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "error": {"code": -32601, "message": f"Unsupported server request: {method}"},
+                "error": {
+                    "code": -32601,
+                    "message": f"Unsupported server request: {method}",
+                },
             }
         )
 
     async def _send(self, payload: dict[str, Any]) -> None:
         if self._process is None or self._process.stdin is None:
             raise CodexClientError("Codex app-server process is not running")
-        wire = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8") + b"\n"
+        wire = (
+            json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode(
+                "utf-8"
+            )
+            + b"\n"
+        )
         self._process.stdin.write(wire)
         await self._process.stdin.drain()
 
@@ -303,9 +324,13 @@ class CodexAppServerClient:
             raise CodexClientError("Codex app-server process is not running")
         while True:
             try:
-                raw = await asyncio.wait_for(self._process.stdout.readline(), timeout=self._timeout)
+                raw = await asyncio.wait_for(
+                    self._process.stdout.readline(), timeout=self._timeout
+                )
             except asyncio.TimeoutError as exc:
-                raise CodexClientError("Timed out waiting for codex app-server response") from exc
+                raise CodexClientError(
+                    "Timed out waiting for codex app-server response"
+                ) from exc
             except ValueError as exc:
                 raise CodexClientError(
                     "Codex app-server emitted a line larger than stream limit "

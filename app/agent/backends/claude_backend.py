@@ -75,33 +75,37 @@ class ClaudeBackend:
         blocks: list[dict[str, Any]] = []
         for att in attachments:
             if att.is_image:
-                blocks.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": att.mime_type,
-                        "data": base64.b64encode(att.data).decode(),
-                    },
-                })
+                blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": att.mime_type,
+                            "data": base64.b64encode(att.data).decode(),
+                        },
+                    }
+                )
             else:
                 extracted = att.extract_text()
                 if extracted:
-                    blocks.append({
-                        "type": "text",
-                        "text": f"[Content of {att.filename}]\n{extracted}",
-                    })
+                    blocks.append(
+                        {
+                            "type": "text",
+                            "text": f"[Content of {att.filename}]\n{extracted}",
+                        }
+                    )
                 else:
-                    blocks.append({
-                        "type": "text",
-                        "text": f"[Attached file: {att.filename} ({att.mime_type}) — content could not be extracted]",
-                    })
+                    blocks.append(
+                        {
+                            "type": "text",
+                            "text": f"[Attached file: {att.filename} ({att.mime_type}) — content could not be extracted]",
+                        }
+                    )
         if message:
             blocks.append({"type": "text", "text": message})
         return blocks
 
-    def _build_can_use_tool(
-        self, on_question: QuestionCallback
-    ) -> Any:
+    def _build_can_use_tool(self, on_question: QuestionCallback) -> Any:
         """Return a can_use_tool callback that intercepts AskUserQuestion."""
 
         async def _can_use_tool(
@@ -161,15 +165,21 @@ class ClaudeBackend:
         # tool call.
         hooks = None
         if can_use_tool_cb:
+
             async def _noop_hook(input, tool_use_id, context):  # noqa: A002
                 return {}
+
             hooks = {
-                "PreToolUse": [HookMatcher(matcher="AskUserQuestion", hooks=[_noop_hook])],
+                "PreToolUse": [
+                    HookMatcher(matcher="AskUserQuestion", hooks=[_noop_hook])
+                ],
             }
 
         options = ClaudeAgentOptions(
             model=model,
-            system_prompt=build_system_prompt(skills=skill_descriptions, channel=channel),
+            system_prompt=build_system_prompt(
+                skills=skill_descriptions, channel=channel
+            ),
             resume=session_id,
             allowed_tools=tools,
             mcp_servers=servers,
@@ -201,20 +211,36 @@ class ClaudeBackend:
                         if isinstance(block, TextBlock):
                             texts.append(block.text)
                             if on_event:
-                                await on_event(make_event(ExecutionEventKind.TEXT_CHUNK, text=block.text))
+                                await on_event(
+                                    make_event(
+                                        ExecutionEventKind.TEXT_CHUNK, text=block.text
+                                    )
+                                )
                         elif isinstance(block, ThinkingBlock):
                             if on_event:
                                 text = getattr(block, "text", "") or ""
-                                await on_event(make_event(ExecutionEventKind.THINKING, text=text))
+                                await on_event(
+                                    make_event(ExecutionEventKind.THINKING, text=text)
+                                )
                         elif isinstance(block, ToolUseBlock):
                             if on_event:
                                 name = getattr(block, "name", "unknown")
                                 inp = str(getattr(block, "input", ""))
-                                await on_event(make_event(ExecutionEventKind.TOOL_USE, tool=name, input=inp))
+                                await on_event(
+                                    make_event(
+                                        ExecutionEventKind.TOOL_USE,
+                                        tool=name,
+                                        input=inp,
+                                    )
+                                )
                         elif isinstance(block, ToolResultBlock):
                             if on_event:
                                 output = str(getattr(block, "content", ""))
-                                await on_event(make_event(ExecutionEventKind.TOOL_RESULT, output=output))
+                                await on_event(
+                                    make_event(
+                                        ExecutionEventKind.TOOL_RESULT, output=output
+                                    )
+                                )
                 elif isinstance(msg, ResultMessage):
                     result_session_id = msg.session_id
                     if msg.is_error:

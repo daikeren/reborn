@@ -34,7 +34,11 @@ def make_event(kind: ExecutionEventKind, **data: Any) -> ExecutionEvent:
     cleaned: dict[str, Any] = {}
     for key, val in data.items():
         if isinstance(val, str):
-            limit = _TOOL_PREVIEW_LIMIT if key in ("input", "output") else _TEXT_PREVIEW_LIMIT
+            limit = (
+                _TOOL_PREVIEW_LIMIT
+                if key in ("input", "output")
+                else _TEXT_PREVIEW_LIMIT
+            )
             if len(val) > limit:
                 val = val[:limit] + "..."
         cleaned[key] = val
@@ -66,7 +70,9 @@ class ExecutionStatus:
         self.status = "completed"
         self.completed_at = time.time()
         self.elapsed_ms = elapsed_ms
-        self.reply_preview = reply_text[:500] + "..." if len(reply_text) > 500 else reply_text
+        self.reply_preview = (
+            reply_text[:500] + "..." if len(reply_text) > 500 else reply_text
+        )
 
     def mark_failed(self, error_message: str, elapsed_ms: int) -> None:
         self.status = "failed"

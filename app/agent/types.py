@@ -12,9 +12,9 @@ class AgentError(Exception):
 
 @dataclass
 class Attachment:
-    filename: str       # "photo.jpg", "document.pdf"
-    mime_type: str      # "image/jpeg", "application/pdf"
-    data: bytes         # raw file content
+    filename: str  # "photo.jpg", "document.pdf"
+    mime_type: str  # "image/jpeg", "application/pdf"
+    data: bytes  # raw file content
 
     @property
     def is_image(self) -> bool:
@@ -35,7 +35,9 @@ class Attachment:
                 text = "\n".join(pages).strip()
                 return text or None
             except Exception:
-                logger.debug("PDF text extraction failed: %s", self.filename, exc_info=True)
+                logger.debug(
+                    "PDF text extraction failed: %s", self.filename, exc_info=True
+                )
                 return None
         if self.mime_type.startswith("text/") or self.mime_type in (
             "application/json",
