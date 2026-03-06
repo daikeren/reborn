@@ -553,4 +553,6 @@ HISTORY_DETAIL_PAGE_TEMPLATE = """<!doctype html>
 
 
 def render_history_detail_page(session_key: str) -> str:
-    return HISTORY_DETAIL_PAGE_TEMPLATE.replace("__SESSION_KEY_JSON__", json.dumps(session_key))
+    return HISTORY_DETAIL_PAGE_TEMPLATE.replace(
+        "__SESSION_KEY_JSON__", json.dumps(session_key)
+    )

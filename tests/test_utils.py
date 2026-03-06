@@ -50,15 +50,15 @@ def test_is_parse_error_rejects_non_parse(message: str):
 async def test_send_html_success():
     send_fn = AsyncMock(return_value="ok")
     result = await send_html(send_fn, "Hello <b>world</b>", chat_id=123)
-    send_fn.assert_awaited_once_with(text="Hello <b>world</b>", parse_mode="HTML", chat_id=123)
+    send_fn.assert_awaited_once_with(
+        text="Hello <b>world</b>", parse_mode="HTML", chat_id=123
+    )
     assert result == "ok"
 
 
 @pytest.mark.asyncio
 async def test_send_html_parse_error_fallback():
-    send_fn = AsyncMock(
-        side_effect=[BadRequest("Can't parse entities"), "fallback_ok"]
-    )
+    send_fn = AsyncMock(side_effect=[BadRequest("Can't parse entities"), "fallback_ok"])
     result = await send_html(send_fn, "<bad>text", chat_id=123)
     assert send_fn.await_count == 2
     # Second call: no parse_mode

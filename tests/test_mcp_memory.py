@@ -48,7 +48,9 @@ async def test_memory_write_format(workspace: Path, _reset_lock):
     from app.mcp.memory import memory_write
 
     with patch("app.mcp.memory.now_tz") as mock_now:
-        mock_now.return_value = datetime(2025, 6, 15, 14, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+        mock_now.return_value = datetime(
+            2025, 6, 15, 14, 30, tzinfo=ZoneInfo("Asia/Taipei")
+        )
         await memory_write("test format", "fact")
 
     file = workspace / "memory" / "2025-06-15.md"
@@ -63,7 +65,9 @@ async def test_memory_search_finds_match(workspace: Path, _reset_lock):
     mem_dir = workspace / "memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
     today = today_tz()
-    (mem_dir / f"{today.isoformat()}.md").write_text("## 10:00 [fact]\nAndy likes black coffee\n")
+    (mem_dir / f"{today.isoformat()}.md").write_text(
+        "## 10:00 [fact]\nAndy likes black coffee\n"
+    )
 
     result = await memory_search("coffee")
     assert "coffee" in result.lower()
@@ -91,7 +95,9 @@ async def test_memory_search_no_results(workspace: Path, _reset_lock):
 async def test_memory_update_core_existing_section(workspace: Path, _reset_lock):
     from app.mcp.memory import memory_update_core
 
-    (workspace / "MEMORY.md").write_text("## Preferences\nold\n\n## Projects\nproject info\n")
+    (workspace / "MEMORY.md").write_text(
+        "## Preferences\nold\n\n## Projects\nproject info\n"
+    )
     await memory_update_core("Preferences", "new content here")
     text = (workspace / "MEMORY.md").read_text()
     assert "new content here" in text
@@ -128,4 +134,3 @@ def test_memory_server_config_uses_uv_run(workspace: Path):
     assert cfg["command"] == "uv"
     assert cfg["args"] == ["run", "python", "-m", "app.mcp.server"]
     assert isinstance(cfg["cwd"], str)
-

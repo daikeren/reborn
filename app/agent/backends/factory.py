@@ -16,4 +16,3 @@ def get_runtime_backend() -> RuntimeBackend:
     raise AgentError(
         f"Unsupported AGENT_BACKEND={settings.agent_backend!r}; expected 'codex' or 'claude'"
     )
-

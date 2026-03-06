@@ -103,4 +103,3 @@ def memory_server_config() -> dict:
         "args": ["run", "python", "-m", "app.mcp.server"],
         "cwd": str(repo_root),
     }
-

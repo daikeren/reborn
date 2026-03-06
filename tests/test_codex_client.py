@@ -70,8 +70,12 @@ async def test_aenter_passes_stream_limit_to_create_subprocess_exec(monkeypatch)
             captured["kwargs"] = kwargs
             return _FakeProcess(stdout=_FakeReadable(b""), stderr=_FakeReadable(b""))
 
-        monkeypatch.setattr("asyncio.create_subprocess_exec", _fake_create_subprocess_exec)
-        monkeypatch.setattr(CodexAppServerClient, "initialize", AsyncMock(return_value=None))
+        monkeypatch.setattr(
+            "asyncio.create_subprocess_exec", _fake_create_subprocess_exec
+        )
+        monkeypatch.setattr(
+            CodexAppServerClient, "initialize", AsyncMock(return_value=None)
+        )
 
         async with CodexAppServerClient():
             pass
@@ -90,7 +94,9 @@ async def test_read_message_wraps_line_too_long_error():
     app.config._settings = _FakeSettings(codex_rpc_stream_limit_bytes=777777)
     try:
         client = CodexAppServerClient()
-        client._process = _FakeProcess(stdout=_FailingStdout(), stderr=_FakeReadable(b""))
+        client._process = _FakeProcess(
+            stdout=_FailingStdout(), stderr=_FakeReadable(b"")
+        )
 
         with pytest.raises(CodexClientError) as exc:
             await client._read_message()

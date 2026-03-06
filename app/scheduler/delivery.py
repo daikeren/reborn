@@ -22,7 +22,8 @@ async def deliver_to_telegram(bot: Bot, chat_id: int, text: str) -> None:
     for chunk in split_message(text):
         try:
             await send_html(
-                functools.partial(bot.send_message, chat_id=chat_id), chunk,
+                functools.partial(bot.send_message, chat_id=chat_id),
+                chunk,
             )
         except Exception:
             logger.exception("Failed to send Telegram message to %s", chat_id)

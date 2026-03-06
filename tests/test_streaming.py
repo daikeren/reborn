@@ -60,14 +60,18 @@ def _completed(thread_id: str = "thread-new", turn_id: str = "turn-1") -> _Note:
 def _backend_with_client(fake_client: _FakeCodexClient, monkeypatch) -> CodexBackend:
     backend = CodexBackend()
     monkeypatch.setattr(backend, "create_client", lambda: fake_client)
-    monkeypatch.setattr("app.agent.backends.codex_backend.build_system_prompt", lambda **kw: "prompt")
+    monkeypatch.setattr(
+        "app.agent.backends.codex_backend.build_system_prompt", lambda **kw: "prompt"
+    )
     return backend
 
 
 @pytest.mark.asyncio
 async def test_basic_agent_turn(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "agentMessage", "text": "Hello world"}}),
+        _Note(
+            "item/completed", {"item": {"type": "agentMessage", "text": "Hello world"}}
+        ),
         _completed(),
     ]
     backend = _backend_with_client(_FakeCodexClient(notes), monkeypatch)
@@ -80,8 +84,20 @@ async def test_basic_agent_turn(monkeypatch):
 @pytest.mark.asyncio
 async def test_commentary_channel_is_ignored(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "commentary", "text": "thinking"}}),
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "final", "text": "final"}}),
+        _Note(
+            "item/completed",
+            {
+                "item": {
+                    "type": "agentMessage",
+                    "channel": "commentary",
+                    "text": "thinking",
+                }
+            },
+        ),
+        _Note(
+            "item/completed",
+            {"item": {"type": "agentMessage", "channel": "final", "text": "final"}},
+        ),
         _completed(),
     ]
     backend = _backend_with_client(_FakeCodexClient(notes), monkeypatch)
@@ -105,8 +121,20 @@ async def test_missing_channel_is_treated_as_final(monkeypatch):
 @pytest.mark.asyncio
 async def test_multiple_final_messages_use_last_completed_text(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "final", "text": "draft"}}),
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "final", "text": "final answer"}}),
+        _Note(
+            "item/completed",
+            {"item": {"type": "agentMessage", "channel": "final", "text": "draft"}},
+        ),
+        _Note(
+            "item/completed",
+            {
+                "item": {
+                    "type": "agentMessage",
+                    "channel": "final",
+                    "text": "final answer",
+                }
+            },
+        ),
         _completed(),
     ]
     backend = _backend_with_client(_FakeCodexClient(notes), monkeypatch)
@@ -119,12 +147,24 @@ async def test_multiple_final_messages_use_last_completed_text(monkeypatch):
 @pytest.mark.asyncio
 async def test_multiple_final_messages_ignore_commentary_and_use_last(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "final", "text": "first"}}),
         _Note(
             "item/completed",
-            {"item": {"type": "agentMessage", "channel": "commentary", "text": "thinking"}},
+            {"item": {"type": "agentMessage", "channel": "final", "text": "first"}},
         ),
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "final", "text": "second"}}),
+        _Note(
+            "item/completed",
+            {
+                "item": {
+                    "type": "agentMessage",
+                    "channel": "commentary",
+                    "text": "thinking",
+                }
+            },
+        ),
+        _Note(
+            "item/completed",
+            {"item": {"type": "agentMessage", "channel": "final", "text": "second"}},
+        ),
         _completed(),
     ]
     backend = _backend_with_client(_FakeCodexClient(notes), monkeypatch)
@@ -152,7 +192,9 @@ async def test_resume_uses_existing_session_id(monkeypatch):
 @pytest.mark.asyncio
 async def test_partial_result_on_stream_failure(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "agentMessage", "text": "partial text"}}),
+        _Note(
+            "item/completed", {"item": {"type": "agentMessage", "text": "partial text"}}
+        ),
     ]
     backend = _backend_with_client(
         _FakeCodexClient(notes, raise_after=RuntimeError("connection lost")),
@@ -167,10 +209,19 @@ async def test_partial_result_on_stream_failure(monkeypatch):
 @pytest.mark.asyncio
 async def test_partial_failure_returns_latest_final_text(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "final", "text": "draft"}}),
         _Note(
             "item/completed",
-            {"item": {"type": "agentMessage", "channel": "final", "text": "stable final"}},
+            {"item": {"type": "agentMessage", "channel": "final", "text": "draft"}},
+        ),
+        _Note(
+            "item/completed",
+            {
+                "item": {
+                    "type": "agentMessage",
+                    "channel": "final",
+                    "text": "stable final",
+                }
+            },
         ),
     ]
     backend = _backend_with_client(
@@ -209,7 +260,9 @@ async def test_channel_passed_to_build_system_prompt(monkeypatch):
     client = _FakeCodexClient(notes)
     backend = CodexBackend()
     monkeypatch.setattr(backend, "create_client", lambda: client)
-    monkeypatch.setattr("app.agent.backends.codex_backend.build_system_prompt", _capture_prompt)
+    monkeypatch.setattr(
+        "app.agent.backends.codex_backend.build_system_prompt", _capture_prompt
+    )
 
     await backend.agent_turn("hi", channel="slack")
     assert captured_kwargs.get("channel") == "slack"
@@ -231,8 +284,16 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
     ]
     client = _FakeCodexClient(notes)
     client.listed_skills = [
-        {"name": "web-researcher", "path": "/tmp/skills/web-researcher/SKILL.md", "description": "Research"},
-        {"name": "disabled", "path": "/tmp/skills/disabled/SKILL.md", "description": ""},
+        {
+            "name": "web-researcher",
+            "path": "/tmp/skills/web-researcher/SKILL.md",
+            "description": "Research",
+        },
+        {
+            "name": "disabled",
+            "path": "/tmp/skills/disabled/SKILL.md",
+            "description": "",
+        },
     ]
 
     captured_prompt_kwargs = {}
@@ -243,13 +304,18 @@ async def test_enable_skills_adds_skill_input(monkeypatch):
 
     backend = CodexBackend()
     monkeypatch.setattr(backend, "create_client", lambda: client)
-    monkeypatch.setattr("app.agent.backends.codex_backend.build_system_prompt", _capture_prompt)
+    monkeypatch.setattr(
+        "app.agent.backends.codex_backend.build_system_prompt", _capture_prompt
+    )
 
     await backend.agent_turn("hello", enable_skills=True)
     assert client.turn_kwargs is not None
     input_items = client.turn_kwargs["input_items"]
     assert input_items[0]["type"] == "text"
-    assert any(item.get("type") == "skill" and item.get("name") == "web-researcher" for item in input_items)
+    assert any(
+        item.get("type") == "skill" and item.get("name") == "web-researcher"
+        for item in input_items
+    )
     assert "web-researcher" in captured_prompt_kwargs["skills"]
 
 
@@ -282,7 +348,9 @@ async def test_long_unbroken_text_is_wrapped_before_codex_calls(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sandbox_policy_includes_obsidian_vault(monkeypatch, workspace: Path, obsidian_vault: Path):
+async def test_sandbox_policy_includes_obsidian_vault(
+    monkeypatch, workspace: Path, obsidian_vault: Path
+):
     import app.config
 
     old = app.config._settings

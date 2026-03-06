@@ -187,7 +187,12 @@ def test_migration_adds_message_count_column(tmp_path: Path):
     """)
     conn.execute(
         "INSERT INTO sessions VALUES (?, ?, ?, ?)",
-        ("old_key", "old_sdk", "2025-01-01T00:00:00+00:00", "2025-01-01T00:00:00+00:00"),
+        (
+            "old_key",
+            "old_sdk",
+            "2025-01-01T00:00:00+00:00",
+            "2025-01-01T00:00:00+00:00",
+        ),
     )
     conn.commit()
     conn.close()

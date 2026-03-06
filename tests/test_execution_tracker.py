@@ -3,7 +3,12 @@ from __future__ import annotations
 import time
 
 from app.monitoring.tracker import ExecutionTracker
-from app.monitoring.types import ExecutionEvent, ExecutionEventKind, ExecutionStatus, make_event
+from app.monitoring.types import (
+    ExecutionEvent,
+    ExecutionEventKind,
+    ExecutionStatus,
+    make_event,
+)
 
 
 def test_start_and_list_active():

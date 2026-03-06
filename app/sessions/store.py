@@ -116,7 +116,9 @@ class SessionStore:
         ).fetchall()
         return [SessionRecord(*row) for row in rows]
 
-    def list_session_summaries(self, limit: int = 100, offset: int = 0) -> list[SessionRecord]:
+    def list_session_summaries(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[SessionRecord]:
         rows = self._conn.execute(
             """
             SELECT

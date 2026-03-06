@@ -22,4 +22,3 @@ def decode_session_id(value: str | None) -> DecodedSessionId | None:
     if not backend or not native:
         return None
     return DecodedSessionId(backend=backend, native_id=native)
-

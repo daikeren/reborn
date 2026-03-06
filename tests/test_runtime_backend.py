@@ -15,7 +15,9 @@ from app.agent.types import AgentError, AgentResult
 async def test_runtime_passes_legacy_unprefixed_session(monkeypatch):
     backend = SimpleNamespace(
         name="codex",
-        agent_turn=AsyncMock(return_value=AgentResult(text="ok", session_id="native-new")),
+        agent_turn=AsyncMock(
+            return_value=AgentResult(text="ok", session_id="native-new")
+        ),
     )
     monkeypatch.setattr("app.agent.runtime.get_runtime_backend", lambda: backend)
 
@@ -29,7 +31,9 @@ async def test_runtime_passes_legacy_unprefixed_session(monkeypatch):
 async def test_runtime_passes_native_session_for_matching_prefix(monkeypatch):
     backend = SimpleNamespace(
         name="codex",
-        agent_turn=AsyncMock(return_value=AgentResult(text="ok", session_id="thread-2")),
+        agent_turn=AsyncMock(
+            return_value=AgentResult(text="ok", session_id="thread-2")
+        ),
     )
     monkeypatch.setattr("app.agent.runtime.get_runtime_backend", lambda: backend)
 
@@ -43,7 +47,9 @@ async def test_runtime_passes_native_session_for_matching_prefix(monkeypatch):
 async def test_runtime_drops_mismatched_backend_prefix(monkeypatch):
     backend = SimpleNamespace(
         name="codex",
-        agent_turn=AsyncMock(return_value=AgentResult(text="ok", session_id="thread-new")),
+        agent_turn=AsyncMock(
+            return_value=AgentResult(text="ok", session_id="thread-new")
+        ),
     )
     monkeypatch.setattr("app.agent.runtime.get_runtime_backend", lambda: backend)
 

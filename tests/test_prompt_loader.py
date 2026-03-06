@@ -26,7 +26,10 @@ def _write_prompt(prompts_dir: Path, name: str, content: str) -> Path:
 
 
 def test_full_frontmatter(prompts_dir: Path):
-    _write_prompt(prompts_dir, "heartbeat", """\
+    _write_prompt(
+        prompts_dir,
+        "heartbeat",
+        """\
 ---
 tools:
   - mcp__memory__memory_search
@@ -35,7 +38,8 @@ max_turns: 5
 suppress_token: HEARTBEAT_OK
 ---
 Check calendar and memory.
-""")
+""",
+    )
     jp = load_job_prompt("heartbeat")
     assert jp.tools == ["mcp__memory__memory_search", "Bash"]
     assert jp.max_turns == 5
@@ -53,12 +57,16 @@ def test_defaults_when_no_frontmatter(prompts_dir: Path):
 
 
 def test_partial_frontmatter(prompts_dir: Path):
-    _write_prompt(prompts_dir, "brief", """\
+    _write_prompt(
+        prompts_dir,
+        "brief",
+        """\
 ---
 max_turns: 8
 ---
 Morning brief here.
-""")
+""",
+    )
     jp = load_job_prompt("brief")
     assert jp.max_turns == 8
     assert jp.tools == []
@@ -82,12 +90,16 @@ def test_missing_file_raises(prompts_dir: Path):
 
 
 def test_should_suppress_exact_match(prompts_dir: Path):
-    _write_prompt(prompts_dir, "hb", """\
+    _write_prompt(
+        prompts_dir,
+        "hb",
+        """\
 ---
 suppress_token: HEARTBEAT_OK
 ---
 Check things.
-""")
+""",
+    )
     jp = load_job_prompt("hb")
     assert jp.should_suppress("HEARTBEAT_OK") is True
     assert jp.should_suppress("  HEARTBEAT_OK  \n") is True
@@ -96,12 +108,16 @@ Check things.
 
 def test_should_suppress_trailing_token(prompts_dir: Path):
     """LLM sometimes adds reasoning before the suppress token."""
-    _write_prompt(prompts_dir, "hb2", """\
+    _write_prompt(
+        prompts_dir,
+        "hb2",
+        """\
 ---
 suppress_token: HEARTBEAT_OK
 ---
 Check things.
-""")
+""",
+    )
     jp = load_job_prompt("hb2")
     verbose = "No events found.\n\nHEARTBEAT_OK"
     assert jp.should_suppress(verbose) is True

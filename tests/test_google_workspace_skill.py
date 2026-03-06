@@ -10,7 +10,13 @@ from app.agent.skills import load_skill
 @pytest.fixture()
 def skill_file(workspace: Path) -> Path:
     """Copy the real google-workspace SKILL.md into the test workspace."""
-    src = Path(__file__).resolve().parent.parent / "workspace" / "skills" / "google-workspace" / "SKILL.md"
+    src = (
+        Path(__file__).resolve().parent.parent
+        / "workspace"
+        / "skills"
+        / "google-workspace"
+        / "SKILL.md"
+    )
     dest_dir = workspace / "skills" / "google-workspace"
     dest_dir.mkdir(parents=True)
     dest = dest_dir / "SKILL.md"

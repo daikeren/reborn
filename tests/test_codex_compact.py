@@ -155,5 +155,7 @@ async def test_compact_notifications_logged(workspace, caplog):
         result = await backend.agent_turn("Hello")
 
     assert result.text == "Done"
-    assert any("compact notification: context_compacted" in r.message for r in caplog.records)
+    assert any(
+        "compact notification: context_compacted" in r.message for r in caplog.records
+    )
     assert any("context compaction item" in r.message for r in caplog.records)
