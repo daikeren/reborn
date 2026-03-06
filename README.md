@@ -1,150 +1,150 @@
-# Reborn 
+# Reborn
 
-Reborn 是一個個人 AI 助理服務，整合 Telegram 與 Slack，支援主動排程提醒、持久化對話 session、記憶（MCP）與可擴充 skills。
+Reborn is a personal AI assistant service that integrates Telegram and Slack, with support for proactive scheduled reminders, persistent conversation sessions, memory (MCP), and extensible skills.
 
-## 主要功能
+## Key Features
 
-- 雙通道聊天
-  - Telegram：long polling，支援 `/new` 重置 session。
-  - Slack：Socket Mode，支援 thread 內對話延續。
-- 串流回覆體驗
-  - 先回 👀 reaction，再持續更新回覆內容。
-  - Telegram 會顯示 typing indicator。
-- Session 管理（SQLite）
-  - Telegram session 具備每日重置（預設 04:00）與閒置重置（4 小時）。
-  - Slack 以 `channel + thread` 維持上下文。
-  - 事件去重（5 分鐘 TTL）。
-- 主動排程（APScheduler）
-  - `heartbeat`：每 30 分鐘。
-  - `morning_brief`：每日 07:00。
-  - `weekly_review`：每週五 18:00。
-- MCP 能力
-  - 內建 memory MCP（寫入、搜尋、更新 `workspace/MEMORY.md`）。
-  - 可選 Google Workspace（透過 gogcli 讀取行事曆、Gmail、Drive、Tasks）。
-- 可切換模型 backend
-  - `codex`（預設）
+- Dual-channel chat
+  - Telegram: long polling, with `/new` support to reset the session.
+  - Slack: Socket Mode, with thread-based conversation continuity.
+- Streaming reply experience
+  - Sends an initial `👀` reaction, then continuously updates the reply content.
+  - Telegram shows a typing indicator.
+- Session management (SQLite)
+  - Telegram sessions support daily reset (default `04:00`) and idle reset (after 4 hours).
+  - Slack keeps context by `channel + thread`.
+  - Event deduplication with a 5-minute TTL.
+- Proactive scheduling (APScheduler)
+  - `heartbeat`: every 30 minutes.
+  - `morning_brief`: daily at `07:00`.
+  - `weekly_review`: every Friday at `18:00`.
+- MCP capabilities
+  - Built-in memory MCP for writing, searching, and updating `workspace/MEMORY.md`.
+  - Optional Google Workspace integration via `gogcli` for Calendar, Gmail, Drive, and Tasks.
+- Switchable model backends
+  - `codex` (default)
   - `claude`
-- Health Check
-  - `GET /health` 回傳 `status`, `active_sessions`, `max_message_count`。
+- Health check
+  - `GET /health` returns `status`, `active_sessions`, and `max_message_count`.
 
-## 技術架構
+## Technical Architecture
 
-- API/Lifecycle：`FastAPI`（`app/main.py`）
-- Channels：`python-telegram-bot` + `slack-bolt`
-- Scheduling：`APScheduler`
-- Session Store：`SQLite`（WAL）
-- Agent Runtime：
+- API/Lifecycle: `FastAPI` (`app/main.py`)
+- Channels: `python-telegram-bot` + `slack-bolt`
+- Scheduling: `APScheduler`
+- Session Store: `SQLite` (WAL)
+- Agent Runtime:
   - Backend factory (`codex` / `claude`)
-  - System prompt 組裝（`workspace/SOUL.md`, `workspace/MEMORY.md`, 近兩日 memory log, skills）
-- MCP：
-  - `app.mcp.server` 提供 memory tools
-  - 可掛 Google Workspace（gogcli skill）
+  - System prompt assembly from `workspace/SOUL.md`, `workspace/MEMORY.md`, recent two-day memory logs, and loaded skills
+- MCP:
+  - `app.mcp.server` exposes memory tools
+  - Google Workspace can be attached through the `gogcli` skill
 
-## 快速開始
+## Quick Start
 
-### 1) 需求
+### 1) Requirements
 
 - Python `>=3.10`
 - `uv`
-- 若使用 `AGENT_BACKEND=codex`：需安裝並登入 Codex CLI（`codex login`）
-- 若使用 Google Workspace：需安裝 [gogcli](https://github.com/steipete/gogcli) 並執行 `gog auth add`
+- If using `AGENT_BACKEND=codex`: install and log in to the Codex CLI with `codex login`
+- If using Google Workspace: install [gogcli](https://github.com/steipete/gogcli) and run `gog auth add`
 
-### 2) 安裝依賴
+### 2) Install dependencies
 
 ```bash
 uv sync --dev
 ```
 
-### 3) 設定環境變數
+### 3) Configure environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-至少啟用一個通道（Telegram 或 Slack）：
+Enable at least one channel, either Telegram or Slack:
 
-- Telegram：填入 `TELEGRAM_BOT_TOKEN` + `ALLOWED_TELEGRAM_USER_ID`
-- Slack：填入 `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` + `ALLOWED_SLACK_USER_ID`
+- Telegram: set `TELEGRAM_BOT_TOKEN` + `ALLOWED_TELEGRAM_USER_ID`
+- Slack: set `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` + `ALLOWED_SLACK_USER_ID`
 
-### 4) 啟動服務
+### 4) Start the service
 
 ```bash
 uv run uvicorn app.main:app --reload
 ```
 
-啟動時會依設定：
+At startup, depending on your configuration, the service will:
 
-- 啟動 Telegram polling（需設定 Telegram token）
-- 啟動 Slack Socket Mode（需設定 Slack token）
-- 啟動 scheduler（需 Telegram 通道，用於排程訊息投遞）
+- start Telegram polling (requires Telegram token)
+- start Slack Socket Mode (requires Slack token)
+- start the scheduler (requires the Telegram channel for scheduled message delivery)
 
-啟動後可在瀏覽器開啟：
+After startup, you can open these pages in a browser:
 
-- `http://127.0.0.1:8000/history`（session list，含 pagination）
-- 點任一 session 進入 detail page 查看 message history
+- `http://127.0.0.1:8000/history` for the session list with pagination
+- open any session to view its detailed message history
 
-## 常用指令
+## Common Commands
 
 ```bash
-# 全部測試
+# Run the full test suite
 uv run pytest
 
-# 跑指定測試
+# Run a focused subset
 uv run pytest tests/test_scheduler_jobs.py -k cadence
 
-# 列出最近 sessions（含 session key / sdk_session_id / 計數）
+# List recent sessions (including session key / sdk_session_id / counts)
 uv run python scripts/session_history.py --list-sessions --limit 50
 
-# 查看某個 session 的歷史訊息（user/assistant 內文）
+# Inspect message history for a specific session (user/assistant content)
 uv run python scripts/session_history.py --session-key "telegram:dm" --limit 200
 ```
 
-## 環境變數重點
+## Important Environment Variables
 
-| 變數 | 用途 | 必填 |
+| Variable | Purpose | Required |
 |---|---|---|
-| `AGENT_BACKEND` | `codex` 或 `claude` | 否（預設 `codex`） |
-| `CHAT_MODEL` | 即時對話模型 | 否 |
-| `BACKGROUND_MODEL` | 排程任務模型 | 否 |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot token | 至少啟用一個通道 |
-| `ALLOWED_TELEGRAM_USER_ID` | 允許的 Telegram user id | 同上 |
-| `SLACK_BOT_TOKEN` | Slack Bot token | 同上 |
-| `SLACK_APP_TOKEN` | Slack App token（Socket Mode） | 同上 |
-| `ALLOWED_SLACK_USER_ID` | 允許的 Slack user id | 同上 |
-| `WORKSPACE_DIR` | workspace 路徑 | 否（預設 `workspace`） |
-| `TIMEZONE` | 排程與 session reset 時區 | 否（預設 `Asia/Taipei`） |
-| `OBSIDIAN_VAULT_PATH` | Obsidian vault 路徑（可寫入 sandbox roots） | 否 |
-| `GOG_ACCOUNT` | gogcli Google 帳號（需先 `gog auth add`） | 否 |
-| `CODEX_APP_SERVER_COMMAND` | 啟動 codex app-server 指令 | 否 |
-| `CODEX_APPROVAL_POLICY` | Codex approval policy | 否 |
-| `CODEX_SANDBOX_MODE` | Codex sandbox 模式 | 否 |
-| `CODEX_RPC_TIMEOUT_SECONDS` | Codex RPC timeout | 否 |
-| `CODEX_RPC_STREAM_LIMIT_BYTES` | Codex RPC stdout/stderr 單行上限（bytes） | 否 |
-| `ANTHROPIC_API_KEY` | Claude backend API key（可選，未設則走 `~/.claude` OAuth） | 否 |
+| `AGENT_BACKEND` | `codex` or `claude` | No (default: `codex`) |
+| `CHAT_MODEL` | Model for real-time chat | No |
+| `BACKGROUND_MODEL` | Model for scheduled jobs | No |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token | At least one channel must be enabled |
+| `ALLOWED_TELEGRAM_USER_ID` | Allowed Telegram user ID | Same as above |
+| `SLACK_BOT_TOKEN` | Slack bot token | Same as above |
+| `SLACK_APP_TOKEN` | Slack app token for Socket Mode | Same as above |
+| `ALLOWED_SLACK_USER_ID` | Allowed Slack user ID | Same as above |
+| `WORKSPACE_DIR` | Workspace path | No (default: `workspace`) |
+| `TIMEZONE` | Time zone for scheduling and session resets | No (default: `Asia/Taipei`) |
+| `OBSIDIAN_VAULT_PATH` | Obsidian vault path (must be writable within sandbox roots) | No |
+| `GOG_ACCOUNT` | Google account for `gogcli` (requires `gog auth add` first) | No |
+| `CODEX_APP_SERVER_COMMAND` | Command used to start the Codex app server | No |
+| `CODEX_APPROVAL_POLICY` | Codex approval policy | No |
+| `CODEX_SANDBOX_MODE` | Codex sandbox mode | No |
+| `CODEX_RPC_TIMEOUT_SECONDS` | Codex RPC timeout | No |
+| `CODEX_RPC_STREAM_LIMIT_BYTES` | Per-line stdout/stderr limit for Codex RPC, in bytes | No |
+| `ANTHROPIC_API_KEY` | API key for the Claude backend (optional; falls back to `~/.claude` OAuth if unset) | No |
 
-## Workspace 約定
+## Workspace Conventions
 
-`WORKSPACE_DIR`（預設 `workspace/`）建議包含：
+`WORKSPACE_DIR` (default: `workspace/`) is expected to contain:
 
-- `SOUL.md`：身份、行為準則、工具指南
-- `MEMORY.md`：事實記憶（助理自己維護的偏好、人物、公司資訊）
-- `memory/YYYY-MM-DD.md`：每日記錄
+- `SOUL.md`: identity, behavioral rules, and tool guidance
+- `MEMORY.md`: factual memory maintained by the assistant, such as preferences, people, and company information
+- `memory/YYYY-MM-DD.md`: daily records
 - `prompts/heartbeat.md`
 - `prompts/morning_brief.md`
 - `prompts/weekly_review.md`
-- `skills/*/SKILL.md`：可載入 skills
+- `skills/*/SKILL.md`: loadable skills
 
-## Prompt 與排程客製
+## Prompt and Schedule Customization
 
-排程 prompt 檔支援 YAML frontmatter：
+Scheduled prompt files support YAML frontmatter:
 
-- `tools`: 允許工具清單
-- `max_turns`: 最大回合數
-- `suppress_token`: 若模型輸出此 token，則不發送訊息（常用於 heartbeat 無事可報）
+- `tools`: allowed tool list
+- `max_turns`: maximum number of turns
+- `suppress_token`: if the model outputs this token, no message is sent; commonly used when `heartbeat` has nothing to report
 
-範例請參考 `workspace/prompts/*.md`。
+See `workspace/prompts/*.md` for examples.
 
-## 專案結構
+## Project Structure
 
 ```text
 app/
@@ -154,11 +154,11 @@ app/
   scheduler/             # jobs, prompt loader, delivery, runner
   sessions/              # SQLite session store + manager
   mcp/                   # memory MCP server/tools
-tests/                   # pytest 測試
+tests/                   # pytest tests
 workspace/               # prompts, skills, memory, soul
 ```
 
-## 安全注意事項
+## Security Notes
 
-- 請勿提交任何 secrets。
-- `.env`、`client_secret*.json`、runtime SQLite/memory artifacts 已在忽略清單中。
+- Do not commit any secrets.
+- `.env`, `client_secret*.json`, and runtime SQLite/memory artifacts are already ignored.
