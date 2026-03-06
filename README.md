@@ -69,6 +69,7 @@ uv run prek run --all-files
 
 The repo keeps its hook definitions in `.pre-commit-config.yaml`, which `prek` can consume directly.
 At the moment, the `ty` hook is scoped to `app/` so commits are gated on application code typing without being blocked by existing test-only typing debt.
+A GitHub Actions workflow mirrors these checks in CI on pull requests and pushes to `main`.
 
 ### 3) Configure environment variables
 
