@@ -63,24 +63,3 @@ async def _run_job(
         len(result.text),
         elapsed_ms,
     )
-
-
-async def heartbeat_tick(
-    bot: Bot, chat_id: int, execution_service: ExecutionService
-) -> None:
-    """Periodic check — suppress if nothing to report."""
-    await _run_job("heartbeat", bot, chat_id, execution_service)
-
-
-async def morning_brief(
-    bot: Bot, chat_id: int, execution_service: ExecutionService
-) -> None:
-    """Daily morning briefing."""
-    await _run_job("morning_brief", bot, chat_id, execution_service)
-
-
-async def weekly_review(
-    bot: Bot, chat_id: int, execution_service: ExecutionService
-) -> None:
-    """Friday evening weekly review."""
-    await _run_job("weekly_review", bot, chat_id, execution_service)

@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from app.scheduler.prompts import JobPrompt, load_job_prompt
+from app.scheduler.prompts import (
+    ScheduledJobPrompt,
+    load_job_prompt,
+    load_scheduled_job_prompts,
+)
 
 
 @pytest.fixture()
@@ -31,6 +35,7 @@ def test_full_frontmatter(prompts_dir: Path):
         "heartbeat",
         """\
 ---
+schedule: "*/30 * * * *"
 tools:
   - mcp__memory__memory_search
   - Bash
@@ -41,6 +46,7 @@ Check calendar and memory.
 """,
     )
     jp = load_job_prompt("heartbeat")
+    assert jp.schedule == "*/30 * * * *"
     assert jp.tools == ["mcp__memory__memory_search", "Bash"]
     assert jp.max_turns == 5
     assert jp.suppress_token == "HEARTBEAT_OK"
@@ -50,6 +56,7 @@ Check calendar and memory.
 def test_defaults_when_no_frontmatter(prompts_dir: Path):
     _write_prompt(prompts_dir, "simple", "Just do the thing.")
     jp = load_job_prompt("simple")
+    assert jp.schedule is None
     assert jp.tools == []
     assert jp.max_turns == 10
     assert jp.suppress_token is None
@@ -68,10 +75,68 @@ Morning brief here.
 """,
     )
     jp = load_job_prompt("brief")
+    assert jp.schedule is None
     assert jp.max_turns == 8
     assert jp.tools == []
     assert jp.suppress_token is None
     assert jp.prompt.strip() == "Morning brief here."
+
+
+def test_load_scheduled_job_prompts_only_returns_scheduled(prompts_dir: Path):
+    _write_prompt(
+        prompts_dir,
+        "heartbeat",
+        """\
+---
+schedule: "*/30 * * * *"
+---
+Check calendar and memory.
+""",
+    )
+    _write_prompt(prompts_dir, "notes", "Reusable prompt only.")
+
+    jobs = load_scheduled_job_prompts()
+
+    assert jobs == [
+        ScheduledJobPrompt(
+            name="heartbeat",
+            schedule="*/30 * * * *",
+            path=prompts_dir / "heartbeat.md",
+        )
+    ]
+
+
+def test_invalid_schedule_type_raises(prompts_dir: Path):
+    _write_prompt(
+        prompts_dir,
+        "bad_schedule",
+        """\
+---
+schedule:
+  - invalid
+---
+Bad config.
+""",
+    )
+
+    with pytest.raises(ValueError, match="'schedule' must be a string"):
+        load_job_prompt("bad_schedule")
+
+
+def test_invalid_tools_type_raises(prompts_dir: Path):
+    _write_prompt(
+        prompts_dir,
+        "bad_tools",
+        """\
+---
+tools: Bash
+---
+Bad config.
+""",
+    )
+
+    with pytest.raises(ValueError, match="'tools' must be a list of strings"):
+        load_job_prompt("bad_tools")
 
 
 # ---------------------------------------------------------------------------

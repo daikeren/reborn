@@ -6,12 +6,12 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
 from app.config import settings
 from app.orchestrator import ExecutionService
-from app.scheduler.jobs import heartbeat_tick, morning_brief, weekly_review
+from app.scheduler.jobs import _run_job
+from app.scheduler.prompts import load_scheduled_job_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -39,30 +39,31 @@ async def start_scheduler(
             "Scheduler preflight: chat %s unreachable, starting anyway", chat_id
         )
 
+    scheduled_jobs = load_scheduled_job_prompts()
     scheduler = AsyncIOScheduler(timezone=tz)
 
-    scheduler.add_job(
-        partial(heartbeat_tick, bot, chat_id, execution_service),
-        trigger=IntervalTrigger(minutes=30, timezone=tz),
-        id="heartbeat",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        partial(morning_brief, bot, chat_id, execution_service),
-        trigger=CronTrigger(hour=7, minute=0, timezone=tz),
-        id="morning_brief",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        partial(weekly_review, bot, chat_id, execution_service),
-        trigger=CronTrigger(day_of_week="fri", hour=18, minute=0, timezone=tz),
-        id="weekly_review",
-        replace_existing=True,
-    )
+    for job in scheduled_jobs:
+        try:
+            trigger = CronTrigger.from_crontab(job.schedule, timezone=tz)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid schedule for prompt '{job.name}': {job.schedule}"
+            ) from exc
+
+        scheduler.add_job(
+            partial(_run_job, job.name, bot, chat_id, execution_service),
+            trigger=trigger,
+            id=job.name,
+            replace_existing=True,
+        )
 
     scheduler.start()
     _scheduler = scheduler
-    logger.info("Scheduler started with 3 jobs")
+    logger.info(
+        "Scheduler started with %s jobs: %s",
+        len(scheduled_jobs),
+        ", ".join(job.name for job in scheduled_jobs) if scheduled_jobs else "-",
+    )
     return scheduler
 
 
