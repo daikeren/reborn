@@ -139,7 +139,7 @@ Job instructions here...
 
 Edit these to match your workflow. For example:
 - Add calendar checks if you do use Google Workspace
-- Add Obsidian search if you have an Obsidian vault
+- Add extra file-search steps if you work across directories outside `WORKSPACE_DIR`
 - Adjust the weekly review to match your review process
 
 ### 3d. Configure Skills (Optional)
@@ -150,8 +150,6 @@ Skills live in `workspace/skills/*/SKILL.md`. The included skills are:
 |---|---|
 | `google-workspace` | [gogcli](https://github.com/steipete/gogcli) installed + `gog auth add` |
 | `speedcaster` | YouTube transcript script |
-| `obsidian-markdown` | An Obsidian vault included in `EXTRA_WRITABLE_ROOTS` |
-| `obsidian-bases` | Same as above |
 | `charlie-munger-mental-models` | Nothing extra |
 | `web-researcher` | Nothing extra |
 
@@ -203,14 +201,11 @@ gog auth add
 GOG_ACCOUNT=your-email@gmail.com
 ```
 
-### Obsidian Vault
+### External Directories
 
 ```bash
 # Set in .env — adds external writable roots for both Codex and Claude backends
-EXTRA_WRITABLE_ROOTS=/path/to/your/vault
-
-# Deprecated compatibility alias
-OBSIDIAN_VAULT_PATH=/path/to/your/vault
+EXTRA_WRITABLE_ROOTS=/path/to/your/workdir,/path/to/reference-material
 ```
 
 ## Troubleshooting

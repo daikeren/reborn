@@ -4,7 +4,7 @@ import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from app.config import settings
 from app.frontmatter import parse_frontmatter
@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 SKILL_FILENAME = "SKILL.md"
 ClaudeSkillModel = Literal["sonnet", "opus", "haiku", "inherit"]
-OBSIDIAN_SKILLS = frozenset({"obsidian-markdown", "obsidian-bases"})
 
 
 @dataclass(frozen=True)
@@ -54,36 +53,21 @@ def load_skill(path: Path) -> tuple[str, SkillDefinition]:
     )
 
 
-def has_obsidian_vault(
-    extra_writable_roots: Sequence[Path] | None = None,
-) -> bool:
-    roots = (
-        settings.extra_writable_roots
-        if extra_writable_roots is None
-        else extra_writable_roots
-    )
-    return any((root / ".obsidian").is_dir() for root in roots)
-
-
 def is_skill_available(
     name: str,
     *,
-    extra_writable_roots: Sequence[Path] | None = None,
     gog_available: bool | None = None,
 ) -> bool:
     if name == "google-workspace":
         if gog_available is not None:
             return gog_available
         return shutil.which("gog") is not None
-    if name in OBSIDIAN_SKILLS:
-        return has_obsidian_vault(extra_writable_roots)
     return True
 
 
 def filter_available_skill_rows(
     skills: list[dict[str, Any]],
     *,
-    extra_writable_roots: Sequence[Path] | None = None,
     gog_available: bool | None = None,
 ) -> list[dict[str, Any]]:
     filtered: list[dict[str, Any]] = []
@@ -91,11 +75,7 @@ def filter_available_skill_rows(
         name = skill.get("name")
         if not isinstance(name, str):
             continue
-        if is_skill_available(
-            name,
-            extra_writable_roots=extra_writable_roots,
-            gog_available=gog_available,
-        ):
+        if is_skill_available(name, gog_available=gog_available):
             filtered.append(skill)
     return filtered
 
@@ -103,17 +83,12 @@ def filter_available_skill_rows(
 def filter_available_skills(
     skills: dict[str, SkillDefinition],
     *,
-    extra_writable_roots: Sequence[Path] | None = None,
     gog_available: bool | None = None,
 ) -> dict[str, SkillDefinition]:
     return {
         name: defn
         for name, defn in skills.items()
-        if is_skill_available(
-            name,
-            extra_writable_roots=extra_writable_roots,
-            gog_available=gog_available,
-        )
+        if is_skill_available(name, gog_available=gog_available)
     }
 
 

@@ -24,7 +24,6 @@ def workspace(tmp_path: Path):
         agent_backend: str = "codex"
         chat_model: str = "gpt-5.4"
         background_model: str = "gpt-5.4"
-        obsidian_vault_path: Path | None = None
         extra_writable_roots: tuple[Path, ...] = ()
         codex_app_server_command: tuple[str, ...] = ("codex", "app-server")
         codex_approval_policy: str = "never"
@@ -40,17 +39,8 @@ def workspace(tmp_path: Path):
 
 
 @pytest.fixture()
-def obsidian_vault(tmp_path: Path):
-    """Create a temp vault with sample files for obsidian tool tests."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    (vault / "note1.md").write_text("# First Note\nHello world\n")
-    (vault / "note2.md").write_text("# Second Note\nFoo bar baz\n")
-    sub = vault / "projects"
-    sub.mkdir()
-    (sub / "project-a.md").write_text("# Project A\nSome project notes\n")
-    # dotfile directory (should be hidden)
-    dot = vault / ".obsidian"
-    dot.mkdir()
-    (dot / "config.json").write_text("{}")
-    return vault
+def external_root(tmp_path: Path):
+    root = tmp_path / "external-root"
+    root.mkdir()
+    (root / "note1.md").write_text("# First Note\nHello world\n")
+    return root

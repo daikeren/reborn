@@ -132,7 +132,6 @@ uv run python scripts/session_history.py --session-key "telegram:dm" --limit 200
 | `WORKSPACE_DIR` | Workspace path | No (default: `workspace`) |
 | `TIMEZONE` | Time zone for scheduling and session resets | No (default: `Asia/Taipei`) |
 | `EXTRA_WRITABLE_ROOTS` | Comma-separated writable paths outside `WORKSPACE_DIR`, shared by both backends | No |
-| `OBSIDIAN_VAULT_PATH` | Deprecated alias for a single external writable path | No |
 | `GOG_ACCOUNT` | Google account for the optional `google-workspace` skill (requires `gog auth add`) | No |
 | `CODEX_APP_SERVER_COMMAND` | Command used to start the Codex app server | No |
 | `CODEX_APPROVAL_POLICY` | Codex approval policy | No |
@@ -177,7 +176,7 @@ Manual setup is still documented in `docs/SETUP.md`.
 ## Advanced Integrations
 
 - `google-workspace`: install [gogcli](https://github.com/steipete/gogcli), run `gog auth add`, then keep `workspace/skills/google-workspace/`.
-- Obsidian skills: point `EXTRA_WRITABLE_ROOTS` at your vault root so the runtime can access it, then keep `workspace/skills/obsidian-markdown/` or `workspace/skills/obsidian-bases/`.
+- Custom external-directory workflows: point `EXTRA_WRITABLE_ROOTS` at any directories you want the runtime to access, then add your own skills under `workspace/skills/`.
 - Skills with unmet prerequisites stay on disk but are not exposed to the runtime.
 
 ## Scheduled Job Customization

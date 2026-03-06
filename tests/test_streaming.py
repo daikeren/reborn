@@ -360,7 +360,7 @@ async def test_long_unbroken_text_is_wrapped_before_codex_calls(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_sandbox_policy_includes_extra_writable_roots(
-    monkeypatch, workspace: Path, obsidian_vault: Path
+    monkeypatch, workspace: Path, external_root: Path
 ):
     import app.config
 
@@ -379,8 +379,7 @@ async def test_sandbox_policy_includes_extra_writable_roots(
         agent_backend: str = "codex"
         chat_model: str = "gpt-5.4"
         background_model: str = "gpt-5.4"
-        obsidian_vault_path: Path | None = obsidian_vault
-        extra_writable_roots: tuple[Path, ...] = (obsidian_vault,)
+        extra_writable_roots: tuple[Path, ...] = (external_root,)
         codex_app_server_command: tuple[str, ...] = ("codex", "app-server")
         codex_approval_policy: str = "never"
         codex_sandbox_mode: str = "workspace-write"
@@ -397,6 +396,6 @@ async def test_sandbox_policy_includes_extra_writable_roots(
         await backend.agent_turn("hello")
         roots = client.turn_kwargs["sandbox_policy"]["writableRoots"]
         assert str(workspace) in roots
-        assert str(obsidian_vault) in roots
+        assert str(external_root) in roots
     finally:
         app.config._settings = old

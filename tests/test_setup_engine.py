@@ -159,36 +159,9 @@ def test_default_templates_are_optional_safe():
     assert "gog calendar events" not in heartbeat
     assert "gog calendar events" not in morning
     assert "gog calendar events" not in weekly
-    assert "obsidian_*" not in morning
+    assert "EXTRA_WRITABLE_ROOTS" not in morning
     assert "google-workspace" not in soul
     assert "Obsidian" not in soul
-
-
-def test_inspect_warns_when_legacy_obsidian_env_is_used(tmp_path: Path, monkeypatch):
-    repo = _repo(tmp_path)
-    _write(
-        repo / ".env",
-        "\n".join(
-            [
-                "AGENT_BACKEND=codex",
-                "WORKSPACE_DIR=workspace",
-                "TIMEZONE=Asia/Taipei",
-                "TELEGRAM_BOT_TOKEN=123:abc",
-                "ALLOWED_TELEGRAM_USER_ID=42",
-                "OBSIDIAN_VAULT_PATH=/tmp/vault",
-            ]
-        )
-        + "\n",
-    )
-    monkeypatch.setattr("app.setup.engine._codex_auth_ready", lambda: True)
-    monkeypatch.setattr("app.setup.engine.shutil.which", lambda name: "/usr/bin/fake")
-
-    result = inspect_setup(repo).to_dict()
-
-    assert (
-        "OBSIDIAN_VAULT_PATH is deprecated; use EXTRA_WRITABLE_ROOTS instead"
-        in result["warnings"]
-    )
 
 
 def test_install_setup_skill_defaults_to_codex_dir(tmp_path: Path, monkeypatch):

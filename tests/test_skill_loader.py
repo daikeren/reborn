@@ -7,7 +7,6 @@ import pytest
 
 from app.agent.skills import (
     filter_available_skill_rows,
-    has_obsidian_vault,
     is_skill_available,
     load_all_skills,
     load_skill,
@@ -304,16 +303,6 @@ Use gog.
     )
     _write_skill(
         skills_dir,
-        "obsidian-markdown",
-        """\
----
-description: Obsidian Markdown
----
-Use Obsidian.
-""",
-    )
-    _write_skill(
-        skills_dir,
         "web-researcher",
         """\
 ---
@@ -329,7 +318,6 @@ Use the web.
 
     assert "web-researcher" in result
     assert "google-workspace" not in result
-    assert "obsidian-markdown" not in result
 
 
 def test_is_skill_available_for_google_workspace():
@@ -337,42 +325,15 @@ def test_is_skill_available_for_google_workspace():
     assert is_skill_available("google-workspace", gog_available=False) is False
 
 
-def test_is_skill_available_for_obsidian(tmp_path: Path):
-    vault = tmp_path / "vault"
-    (vault / ".obsidian").mkdir(parents=True)
-
-    assert (
-        is_skill_available("obsidian-markdown", extra_writable_roots=(vault,)) is True
-    )
-    assert (
-        is_skill_available(
-            "obsidian-markdown", extra_writable_roots=(tmp_path / "plain",)
-        )
-        is False
-    )
-
-
-def test_has_obsidian_vault(tmp_path: Path):
-    vault = tmp_path / "vault"
-    (vault / ".obsidian").mkdir(parents=True)
-
-    assert has_obsidian_vault((vault,)) is True
-    assert has_obsidian_vault((tmp_path / "plain",)) is False
-
-
-def test_filter_available_skill_rows(tmp_path: Path):
-    vault = tmp_path / "vault"
-    (vault / ".obsidian").mkdir(parents=True)
+def test_filter_available_skill_rows():
     rows = [
         {"name": "google-workspace"},
-        {"name": "obsidian-markdown"},
         {"name": "web-researcher"},
     ]
 
     filtered = filter_available_skill_rows(
         rows,
-        extra_writable_roots=(vault,),
         gog_available=False,
     )
 
-    assert [row["name"] for row in filtered] == ["obsidian-markdown", "web-researcher"]
+    assert [row["name"] for row in filtered] == ["web-researcher"]

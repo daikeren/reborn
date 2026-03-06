@@ -17,14 +17,11 @@ def _resolve_path(value: str) -> Path:
 def _parse_extra_writable_roots() -> tuple[Path, ...]:
     roots: list[Path] = []
     raw = os.getenv("EXTRA_WRITABLE_ROOTS", "")
-    legacy = os.getenv("OBSIDIAN_VAULT_PATH")
 
     if raw:
         roots.extend(
             _resolve_path(part.strip()) for part in raw.split(",") if part.strip()
         )
-    if legacy:
-        roots.append(_resolve_path(legacy))
 
     unique: list[Path] = []
     seen: set[Path] = set()
@@ -84,11 +81,6 @@ class Settings:
     # Paths
     workspace_dir: Path = field(
         default_factory=lambda: _resolve_path(os.getenv("WORKSPACE_DIR", "workspace"))
-    )
-    obsidian_vault_path: Path | None = field(
-        default_factory=lambda: (
-            _resolve_path(p) if (p := os.getenv("OBSIDIAN_VAULT_PATH")) else None
-        )
     )
     extra_writable_roots: tuple[Path, ...] = field(
         default_factory=_parse_extra_writable_roots

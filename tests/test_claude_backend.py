@@ -8,7 +8,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_agent_turn_passes_extra_writable_roots_to_add_dirs(
-    monkeypatch, workspace: Path, obsidian_vault: Path
+    monkeypatch, workspace: Path, external_root: Path
 ):
     import app.config
     from app.agent.backends.claude_backend import ClaudeBackend
@@ -28,8 +28,7 @@ async def test_agent_turn_passes_extra_writable_roots_to_add_dirs(
         agent_backend: str = "claude"
         chat_model: str = "claude-sonnet-4-5"
         background_model: str = "claude-sonnet-4-5"
-        obsidian_vault_path: Path | None = obsidian_vault
-        extra_writable_roots: tuple[Path, ...] = (obsidian_vault,)
+        extra_writable_roots: tuple[Path, ...] = (external_root,)
 
     captured = {}
 
@@ -50,6 +49,6 @@ async def test_agent_turn_passes_extra_writable_roots_to_add_dirs(
         result = await backend.agent_turn("hello")
 
         assert result.text == ""
-        assert captured["add_dirs"] == [str(obsidian_vault)]
+        assert captured["add_dirs"] == [str(external_root)]
     finally:
         app.config._settings = old

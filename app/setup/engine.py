@@ -317,9 +317,6 @@ def inspect_setup(repo_root: Path | None = None) -> SetupInspection:
         optional_integrations={
             "gog_installed": bool(shutil.which("gog")),
             "extra_writable_roots_configured": bool(env.get("EXTRA_WRITABLE_ROOTS")),
-            "legacy_obsidian_vault_path_configured": bool(
-                env.get("OBSIDIAN_VAULT_PATH")
-            ),
         },
     )
 
@@ -361,10 +358,6 @@ def inspect_setup(repo_root: Path | None = None) -> SetupInspection:
             f"Missing {Path(inspection.workspace.workspace_dir) / 'MEMORY.md'}"
         )
 
-    if inspection.optional_integrations["legacy_obsidian_vault_path_configured"]:
-        inspection.warnings.append(
-            "OBSIDIAN_VAULT_PATH is deprecated; use EXTRA_WRITABLE_ROOTS instead"
-        )
     return inspection
 
 
