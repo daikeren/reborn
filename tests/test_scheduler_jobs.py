@@ -14,9 +14,9 @@ class FakeResult:
 
 
 def _write_prompt(workspace: Path, name: str, content: str) -> None:
-    prompts = workspace / "prompts"
-    prompts.mkdir(exist_ok=True)
-    (prompts / f"{name}.md").write_text(content, encoding="utf-8")
+    jobs = workspace / "jobs"
+    jobs.mkdir(exist_ok=True)
+    (jobs / f"{name}.md").write_text(content, encoding="utf-8")
 
 
 @pytest.fixture()
@@ -27,7 +27,7 @@ def execution_service():
 
 
 @pytest.fixture(autouse=True)
-def _prompt_files(workspace: Path):
+def _job_files(workspace: Path):
     _write_prompt(
         workspace,
         "heartbeat",

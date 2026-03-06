@@ -12,14 +12,14 @@ from app.scheduler.prompts import (
 
 
 @pytest.fixture()
-def prompts_dir(workspace: Path) -> Path:
-    d = workspace / "prompts"
+def jobs_dir(workspace: Path) -> Path:
+    d = workspace / "jobs"
     d.mkdir()
     return d
 
 
-def _write_prompt(prompts_dir: Path, name: str, content: str) -> Path:
-    p = prompts_dir / f"{name}.md"
+def _write_prompt(jobs_dir: Path, name: str, content: str) -> Path:
+    p = jobs_dir / f"{name}.md"
     p.write_text(content)
     return p
 
@@ -29,9 +29,9 @@ def _write_prompt(prompts_dir: Path, name: str, content: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_full_frontmatter(prompts_dir: Path):
+def test_full_frontmatter(jobs_dir: Path):
     _write_prompt(
-        prompts_dir,
+        jobs_dir,
         "heartbeat",
         """\
 ---
@@ -53,8 +53,8 @@ Check calendar and memory.
     assert jp.prompt.strip() == "Check calendar and memory."
 
 
-def test_defaults_when_no_frontmatter(prompts_dir: Path):
-    _write_prompt(prompts_dir, "simple", "Just do the thing.")
+def test_defaults_when_no_frontmatter(jobs_dir: Path):
+    _write_prompt(jobs_dir, "simple", "Just do the thing.")
     jp = load_job_prompt("simple")
     assert jp.schedule is None
     assert jp.tools == []
@@ -63,9 +63,9 @@ def test_defaults_when_no_frontmatter(prompts_dir: Path):
     assert jp.prompt == "Just do the thing."
 
 
-def test_partial_frontmatter(prompts_dir: Path):
+def test_partial_frontmatter(jobs_dir: Path):
     _write_prompt(
-        prompts_dir,
+        jobs_dir,
         "brief",
         """\
 ---
@@ -82,9 +82,9 @@ Morning brief here.
     assert jp.prompt.strip() == "Morning brief here."
 
 
-def test_load_scheduled_job_prompts_only_returns_scheduled(prompts_dir: Path):
+def test_load_scheduled_job_prompts_only_returns_scheduled(jobs_dir: Path):
     _write_prompt(
-        prompts_dir,
+        jobs_dir,
         "heartbeat",
         """\
 ---
@@ -93,7 +93,7 @@ schedule: "*/30 * * * *"
 Check calendar and memory.
 """,
     )
-    _write_prompt(prompts_dir, "notes", "Reusable prompt only.")
+    _write_prompt(jobs_dir, "notes", "Reusable prompt only.")
 
     jobs = load_scheduled_job_prompts()
 
@@ -101,14 +101,72 @@ Check calendar and memory.
         ScheduledJobPrompt(
             name="heartbeat",
             schedule="*/30 * * * *",
-            path=prompts_dir / "heartbeat.md",
+            path=jobs_dir / "heartbeat.md",
         )
     ]
 
 
-def test_invalid_schedule_type_raises(prompts_dir: Path):
+def test_load_job_prompt_falls_back_to_legacy_prompts_dir(workspace: Path):
+    legacy_dir = workspace / "prompts"
+    legacy_dir.mkdir()
     _write_prompt(
-        prompts_dir,
+        legacy_dir,
+        "heartbeat",
+        """\
+---
+schedule: "*/30 * * * *"
+---
+Legacy prompt.
+""",
+    )
+
+    jp = load_job_prompt("heartbeat")
+
+    assert jp.prompt.strip() == "Legacy prompt."
+
+
+def test_jobs_dir_takes_precedence_over_legacy_prompts_dir(workspace: Path):
+    jobs_dir = workspace / "jobs"
+    jobs_dir.mkdir()
+    legacy_dir = workspace / "prompts"
+    legacy_dir.mkdir()
+    _write_prompt(
+        jobs_dir,
+        "heartbeat",
+        """\
+---
+schedule: "*/30 * * * *"
+---
+New job definition.
+""",
+    )
+    _write_prompt(
+        legacy_dir,
+        "heartbeat",
+        """\
+---
+schedule: "*/30 * * * *"
+---
+Legacy prompt.
+""",
+    )
+
+    jobs = load_scheduled_job_prompts()
+    jp = load_job_prompt("heartbeat")
+
+    assert jobs == [
+        ScheduledJobPrompt(
+            name="heartbeat",
+            schedule="*/30 * * * *",
+            path=jobs_dir / "heartbeat.md",
+        )
+    ]
+    assert jp.prompt.strip() == "New job definition."
+
+
+def test_invalid_schedule_type_raises(jobs_dir: Path):
+    _write_prompt(
+        jobs_dir,
         "bad_schedule",
         """\
 ---
@@ -123,9 +181,9 @@ Bad config.
         load_job_prompt("bad_schedule")
 
 
-def test_invalid_tools_type_raises(prompts_dir: Path):
+def test_invalid_tools_type_raises(jobs_dir: Path):
     _write_prompt(
-        prompts_dir,
+        jobs_dir,
         "bad_tools",
         """\
 ---
@@ -144,7 +202,7 @@ Bad config.
 # ---------------------------------------------------------------------------
 
 
-def test_missing_file_raises(prompts_dir: Path):
+def test_missing_file_raises(jobs_dir: Path):
     with pytest.raises(FileNotFoundError):
         load_job_prompt("nonexistent")
 
@@ -154,9 +212,9 @@ def test_missing_file_raises(prompts_dir: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_should_suppress_exact_match(prompts_dir: Path):
+def test_should_suppress_exact_match(jobs_dir: Path):
     _write_prompt(
-        prompts_dir,
+        jobs_dir,
         "hb",
         """\
 ---
@@ -171,10 +229,10 @@ Check things.
     assert jp.should_suppress("Something else") is False
 
 
-def test_should_suppress_trailing_token(prompts_dir: Path):
+def test_should_suppress_trailing_token(jobs_dir: Path):
     """LLM sometimes adds reasoning before the suppress token."""
     _write_prompt(
-        prompts_dir,
+        jobs_dir,
         "hb2",
         """\
 ---
@@ -189,7 +247,7 @@ Check things.
     assert jp.should_suppress("HEARTBEAT_OK and more") is False
 
 
-def test_should_suppress_without_token(prompts_dir: Path):
-    _write_prompt(prompts_dir, "no_token", "Do stuff.")
+def test_should_suppress_without_token(jobs_dir: Path):
+    _write_prompt(jobs_dir, "no_token", "Do stuff.")
     jp = load_job_prompt("no_token")
     assert jp.should_suppress("anything") is False

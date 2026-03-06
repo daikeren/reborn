@@ -6,6 +6,9 @@ from pathlib import Path
 from app.config import settings
 from app.frontmatter import parse_frontmatter
 
+JOB_DEFINITIONS_DIR = "jobs"
+LEGACY_PROMPTS_DIR = "prompts"
+
 
 @dataclass(frozen=True)
 class JobPrompt:
@@ -67,29 +70,36 @@ def _load_prompt(path: Path) -> JobPrompt:
 
 
 def load_job_prompt(name: str) -> JobPrompt:
-    """Load a job prompt from workspace/prompts/{name}.md.
+    """Load a job definition from workspace/jobs/{name}.md.
 
+    Falls back to the legacy workspace/prompts directory when needed.
     Supports YAML frontmatter for schedule, tools, max_turns, and suppress_token.
     """
-    path = settings.workspace_dir / "prompts" / f"{name}.md"
-    return _load_prompt(path)
+    job_path = settings.workspace_dir / JOB_DEFINITIONS_DIR / f"{name}.md"
+    legacy_path = settings.workspace_dir / LEGACY_PROMPTS_DIR / f"{name}.md"
+    if job_path.exists():
+        return _load_prompt(job_path)
+    return _load_prompt(legacy_path)
 
 
 def load_scheduled_job_prompts() -> list[ScheduledJobPrompt]:
-    prompts_dir = settings.workspace_dir / "prompts"
-    if not prompts_dir.exists():
-        return []
-
-    scheduled_jobs: list[ScheduledJobPrompt] = []
-    for path in sorted(prompts_dir.glob("*.md")):
-        prompt = _load_prompt(path)
-        if prompt.schedule is None:
+    scheduled_by_name: dict[str, ScheduledJobPrompt] = {}
+    for dirname in (JOB_DEFINITIONS_DIR, LEGACY_PROMPTS_DIR):
+        directory = settings.workspace_dir / dirname
+        if not directory.exists():
             continue
-        scheduled_jobs.append(
-            ScheduledJobPrompt(
+
+        for path in sorted(directory.glob("*.md")):
+            if path.stem in scheduled_by_name:
+                continue
+
+            prompt = _load_prompt(path)
+            if prompt.schedule is None:
+                continue
+
+            scheduled_by_name[path.stem] = ScheduledJobPrompt(
                 name=path.stem,
                 schedule=prompt.schedule,
                 path=path,
             )
-        )
-    return scheduled_jobs
+    return list(scheduled_by_name.values())

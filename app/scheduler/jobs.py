@@ -18,7 +18,7 @@ async def _run_job(
     chat_id: int,
     execution_service: ExecutionService,
 ) -> None:
-    """Generic job runner: load prompt file, call agent, deliver or suppress."""
+    """Generic job runner: load a job definition, call the agent, deliver or suppress."""
     jp = load_job_prompt(name)
     now = now_tz()
     started_at = time.monotonic()

@@ -14,9 +14,9 @@ class FakeChat:
 
 
 def _write_prompt(workspace: Path, name: str, content: str) -> None:
-    prompts_dir = workspace / "prompts"
-    prompts_dir.mkdir(exist_ok=True)
-    (prompts_dir / f"{name}.md").write_text(content, encoding="utf-8")
+    jobs_dir = workspace / "jobs"
+    jobs_dir.mkdir(exist_ok=True)
+    (jobs_dir / f"{name}.md").write_text(content, encoding="utf-8")
 
 
 @pytest.fixture(autouse=True)
