@@ -22,8 +22,8 @@ def workspace(tmp_path: Path):
         slack_app_token: str = "fake"
         allowed_slack_user_id: str = "fake"
         agent_backend: str = "codex"
-        chat_model: str = "gpt-5.3-codex"
-        background_model: str = "gpt-5.3-codex"
+        chat_model: str = "gpt-5.4"
+        background_model: str = "gpt-5.4"
         obsidian_vault_path: Path | None = None
         codex_app_server_command: tuple[str, ...] = ("codex", "app-server")
         codex_approval_policy: str = "never"

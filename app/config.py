@@ -71,11 +71,9 @@ class Settings:
     agent_backend: str = field(
         default_factory=lambda: os.getenv("AGENT_BACKEND", "codex")
     )
-    chat_model: str = field(
-        default_factory=lambda: os.getenv("CHAT_MODEL", "gpt-5.3-codex")
-    )
+    chat_model: str = field(default_factory=lambda: os.getenv("CHAT_MODEL", "gpt-5.4"))
     background_model: str = field(
-        default_factory=lambda: os.getenv("BACKGROUND_MODEL", "gpt-5.3-codex")
+        default_factory=lambda: os.getenv("BACKGROUND_MODEL", "gpt-5.4")
     )
 
     # Codex App Server

@@ -140,7 +140,7 @@ async def test_job_uses_background_model(workspace: Path, execution_service):
     await _run_job("heartbeat", bot, 123, execution_service)
 
     request = execution_service.run_background.call_args.args[0]
-    assert request.model == "gpt-5.3-codex"
+    assert request.model == "gpt-5.4"
 
 
 @pytest.mark.asyncio
