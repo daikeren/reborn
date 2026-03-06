@@ -177,3 +177,16 @@ def test_install_setup_skill_defaults_to_codex_dir(tmp_path: Path, monkeypatch):
     destinations = module.resolve_destinations(home=home)
 
     assert destinations == [home / ".codex" / "skills"]
+
+
+def test_codex_auth_ready_uses_home_fallback(tmp_path: Path, monkeypatch):
+    auth_dir = tmp_path / ".codex"
+    auth_dir.mkdir()
+    (auth_dir / "auth.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    from app.setup.engine import _codex_auth_ready
+
+    assert _codex_auth_ready() is True

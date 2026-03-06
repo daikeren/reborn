@@ -251,9 +251,10 @@ def _workspace_dir(repo_root: Path, env: dict[str, str]) -> Path:
 
 
 def _codex_auth_ready() -> bool:
-    codex_home = Path(os.getenv("CODEX_HOME", "")).expanduser()
-    if not str(codex_home):
-        codex_home = Path.home() / ".codex"
+    codex_home_raw = os.getenv("CODEX_HOME")
+    codex_home = (
+        Path(codex_home_raw).expanduser() if codex_home_raw else Path.home() / ".codex"
+    )
     return (codex_home / "auth.json").exists()
 
 
