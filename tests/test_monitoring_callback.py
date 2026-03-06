@@ -14,6 +14,7 @@ from app.monitoring.types import ExecutionEvent, ExecutionEventKind
 
 # --- Reuse the fake Codex client from test_streaming.py ---
 
+
 @dataclass
 class _Note:
     method: str
@@ -52,7 +53,9 @@ class _FakeCodexClient:
 def _backend_with_client(fake_client: _FakeCodexClient, monkeypatch) -> CodexBackend:
     backend = CodexBackend()
     monkeypatch.setattr(backend, "create_client", lambda: fake_client)
-    monkeypatch.setattr("app.agent.backends.codex_backend.build_system_prompt", lambda **kw: "prompt")
+    monkeypatch.setattr(
+        "app.agent.backends.codex_backend.build_system_prompt", lambda **kw: "prompt"
+    )
     return backend
 
 
@@ -65,10 +68,14 @@ def _completed() -> _Note:
 
 # --- Backend event emission tests ---
 
+
 @pytest.mark.asyncio
 async def test_codex_emits_tool_use_event(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "toolUse", "name": "WebSearch", "input": "query"}}),
+        _Note(
+            "item/completed",
+            {"item": {"type": "toolUse", "name": "WebSearch", "input": "query"}},
+        ),
         _Note("item/completed", {"item": {"type": "agentMessage", "text": "result"}}),
         _completed(),
     ]
@@ -89,8 +96,20 @@ async def test_codex_emits_tool_use_event(monkeypatch):
 @pytest.mark.asyncio
 async def test_codex_emits_commentary_event(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "commentary", "text": "thinking..."}}),
-        _Note("item/completed", {"item": {"type": "agentMessage", "channel": "final", "text": "answer"}}),
+        _Note(
+            "item/completed",
+            {
+                "item": {
+                    "type": "agentMessage",
+                    "channel": "commentary",
+                    "text": "thinking...",
+                }
+            },
+        ),
+        _Note(
+            "item/completed",
+            {"item": {"type": "agentMessage", "channel": "final", "text": "answer"}},
+        ),
         _completed(),
     ]
     backend = _backend_with_client(_FakeCodexClient(notes), monkeypatch)
@@ -127,7 +146,10 @@ async def test_codex_emits_turn_completed(monkeypatch):
 @pytest.mark.asyncio
 async def test_codex_emits_tool_result_event(monkeypatch):
     notes = [
-        _Note("item/completed", {"item": {"type": "toolResult", "output": "search results here"}}),
+        _Note(
+            "item/completed",
+            {"item": {"type": "toolResult", "output": "search results here"}},
+        ),
         _Note("item/completed", {"item": {"type": "agentMessage", "text": "done"}}),
         _completed(),
     ]
@@ -147,7 +169,10 @@ async def test_codex_emits_tool_result_event(monkeypatch):
 async def test_on_event_none_does_not_raise(monkeypatch):
     """Backward compat: on_event=None (default) works fine."""
     notes = [
-        _Note("item/completed", {"item": {"type": "toolUse", "name": "WebSearch", "input": "q"}}),
+        _Note(
+            "item/completed",
+            {"item": {"type": "toolUse", "name": "WebSearch", "input": "q"}},
+        ),
         _Note("item/completed", {"item": {"type": "agentMessage", "text": "result"}}),
         _completed(),
     ]
@@ -158,25 +183,38 @@ async def test_on_event_none_does_not_raise(monkeypatch):
     assert result.text == "result"
 
 
-# --- SessionManager tracker integration test ---
+# --- ExecutionService tracker integration test ---
+
 
 @pytest.mark.asyncio
-async def test_session_manager_wires_tracker(workspace: Path):
-    """SessionManager._run_agent wires ExecutionTracker lifecycle correctly."""
+async def test_execution_service_wires_tracker(workspace: Path):
+    """ExecutionService.run_interactive wires ExecutionTracker lifecycle correctly."""
+    from app.orchestrator import ExecutionService, InteractiveExecutionRequest
     from app.sessions.manager import SessionManager
     from app.sessions.store import SessionStore
 
     store = SessionStore(workspace / "test.db")
     manager = SessionManager(store)
+    service = ExecutionService(store, manager)
 
     tracker = ExecutionTracker()
 
     fake_result = AgentResult(text="hello world", session_id="sid-123")
 
-    with patch("app.sessions.manager.get_tracker", return_value=tracker), \
-         patch("app.sessions.manager.agent_turn", new_callable=AsyncMock, return_value=fake_result):
-        result = await manager._run_agent(
-            "test:session", "hi", channel="telegram",
+    with (
+        patch("app.orchestrator.service.get_tracker", return_value=tracker),
+        patch(
+            "app.orchestrator.service.agent_turn",
+            new_callable=AsyncMock,
+            return_value=fake_result,
+        ),
+    ):
+        result = await service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="test:session",
+                channel="telegram",
+                message="hi",
+            )
         )
 
     assert result is not None
@@ -195,20 +233,32 @@ async def test_session_manager_wires_tracker(workspace: Path):
 
 
 @pytest.mark.asyncio
-async def test_session_manager_tracker_on_failure(workspace: Path):
-    """SessionManager._run_agent marks execution as failed on error."""
+async def test_execution_service_tracker_on_failure(workspace: Path):
+    """ExecutionService.run_interactive marks execution as failed on error."""
+    from app.orchestrator import ExecutionService, InteractiveExecutionRequest
     from app.sessions.manager import SessionManager
     from app.sessions.store import SessionStore
 
     store = SessionStore(workspace / "test.db")
     manager = SessionManager(store)
+    service = ExecutionService(store, manager)
 
     tracker = ExecutionTracker()
 
-    with patch("app.sessions.manager.get_tracker", return_value=tracker), \
-         patch("app.sessions.manager.agent_turn", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
-        result = await manager._run_agent(
-            "test:fail", "hi", channel="slack",
+    with (
+        patch("app.orchestrator.service.get_tracker", return_value=tracker),
+        patch(
+            "app.orchestrator.service.agent_turn",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        result = await service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="test:fail",
+                channel="slack",
+                message="hi",
+            )
         )
 
     assert result is None

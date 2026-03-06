@@ -31,7 +31,8 @@ async def test_typing_action_sent():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_telegram = _slow_handle
+    execution_service = AsyncMock()
+    execution_service.run_interactive = _slow_handle
 
     update = MagicMock()
     update.update_id = 100
@@ -49,7 +50,7 @@ async def test_typing_action_sent():
     context.bot.set_message_reaction = AsyncMock()
 
     with patch("app.channels.telegram.verify_telegram", return_value=True):
-        app = create_telegram_app("fake-token", sm)
+        app = create_telegram_app("fake-token", sm, execution_service)
         handler = _get_message_handler(app)
         await handler(update, context)
 
@@ -66,7 +67,8 @@ async def test_typing_task_cancelled_after_agent():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_telegram = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     update = MagicMock()
     update.update_id = 101
@@ -84,12 +86,12 @@ async def test_typing_task_cancelled_after_agent():
     context.bot.set_message_reaction = AsyncMock()
 
     with patch("app.channels.telegram.verify_telegram", return_value=True):
-        app = create_telegram_app("fake-token", sm)
+        app = create_telegram_app("fake-token", sm, execution_service)
         handler = _get_message_handler(app)
         await handler(update, context)
 
     # The key assertion: handler completed without error and agent was called
-    sm.handle_telegram.assert_awaited_once()
+    execution_service.run_interactive.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -100,7 +102,8 @@ async def test_typing_task_cancelled_on_exception():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_telegram = AsyncMock(side_effect=Exception("agent error"))
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(side_effect=Exception("agent error"))
 
     update = MagicMock()
     update.update_id = 102
@@ -118,9 +121,9 @@ async def test_typing_task_cancelled_on_exception():
     context.bot.set_message_reaction = AsyncMock()
 
     with patch("app.channels.telegram.verify_telegram", return_value=True):
-        app = create_telegram_app("fake-token", sm)
+        app = create_telegram_app("fake-token", sm, execution_service)
         handler = _get_message_handler(app)
         # Should not raise — handler catches agent exceptions
         await handler(update, context)
 
-    sm.handle_telegram.assert_awaited_once()
+    execution_service.run_interactive.assert_awaited_once()

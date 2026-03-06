@@ -4,7 +4,12 @@ import asyncio
 import contextlib
 
 from loguru import logger
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReactionTypeEmoji, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReactionTypeEmoji,
+    Update,
+)
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -17,6 +22,11 @@ from telegram.ext import (
 
 from app.agent.types import Attachment
 from app.auth import verify_telegram
+from app.orchestrator import (
+    ExecutionService,
+    InteractiveExecutionRequest,
+    is_duplicate_event,
+)
 from app.sessions.manager import SessionManager
 from app.utils import send_html, split_message
 
@@ -31,12 +41,20 @@ async def _typing_loop(bot, chat_id: int) -> None:
         pass
 
 
-def create_telegram_app(token: str, session_manager: SessionManager) -> Application:
+def create_telegram_app(
+    token: str,
+    session_manager: SessionManager,
+    execution_service: ExecutionService,
+) -> Application:
     """Build and return a python-telegram-bot Application (long polling)."""
 
-    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def handle_message(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         if not verify_telegram(update):
-            logger.debug("Ignoring unauthorized Telegram update: update_id={}", update.update_id)
+            logger.debug(
+                "Ignoring unauthorized Telegram update: update_id={}", update.update_id
+            )
             return
 
         assert update.message is not None
@@ -49,23 +67,35 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
             photo = update.message.photo[-1]
             tg_file = await photo.get_file()
             data = bytes(await tg_file.download_as_bytearray())
-            attachments.append(Attachment(
-                filename="photo.jpg",
-                mime_type="image/jpeg",
-                data=data,
-            ))
+            attachments.append(
+                Attachment(
+                    filename="photo.jpg",
+                    mime_type="image/jpeg",
+                    data=data,
+                )
+            )
         if update.message.document:
             doc = update.message.document
             tg_file = await doc.get_file()
             data = bytes(await tg_file.download_as_bytearray())
-            attachments.append(Attachment(
-                filename=doc.file_name or "document",
-                mime_type=doc.mime_type or "application/octet-stream",
-                data=data,
-            ))
+            attachments.append(
+                Attachment(
+                    filename=doc.file_name or "document",
+                    mime_type=doc.mime_type or "application/octet-stream",
+                    data=data,
+                )
+            )
 
         if not text and not attachments:
-            logger.debug("Ignoring Telegram update with no text or attachments: update_id={}", update.update_id)
+            logger.debug(
+                "Ignoring Telegram update with no text or attachments: update_id={}",
+                update.update_id,
+            )
+            return
+
+        event_id = f"tg:{update.update_id}"
+        if is_duplicate_event(event_id):
+            logger.debug("Duplicate Telegram event ignored: {}", event_id)
             return
 
         # If there's a pending question, resolve it with the reply
@@ -104,10 +134,12 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
                 header = q.get("header", "")
                 question_text = q.get("question", "")
                 keyboard_rows = [
-                    [InlineKeyboardButton(
-                        opt.get("label", ""),
-                        callback_data=f"ask_user:{i}:{j}",
-                    )]
+                    [
+                        InlineKeyboardButton(
+                            opt.get("label", ""),
+                            callback_data=f"ask_user:{i}:{j}",
+                        )
+                    ]
                     for j, opt in enumerate(q.get("options", []))
                 ]
                 msg_text = f"*{header}*: {question_text}"
@@ -119,12 +151,17 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
                 )
 
         try:
-            reply = await session_manager.handle_telegram(
-                update_id=update.update_id,
-                text=text,
-                attachments=attachments or None,
-                send_question=send_question,
+            result = await execution_service.run_interactive(
+                InteractiveExecutionRequest(
+                    session_key="telegram:dm",
+                    channel="telegram",
+                    message=text,
+                    attachments=attachments or None,
+                    send_question=send_question,
+                    session_policy="telegram",
+                )
             )
+            reply = result.text if result else None
             if reply:
                 for chunk in split_message(reply):
                     await send_html(update.message.reply_text, chunk)
@@ -134,7 +171,9 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
                     len(reply),
                 )
             else:
-                logger.info("Telegram reply suppressed or empty: update_id={}", update.update_id)
+                logger.info(
+                    "Telegram reply suppressed or empty: update_id={}", update.update_id
+                )
         except Exception:
             logger.exception("Telegram handler error: update_id={}", update.update_id)
         finally:
@@ -146,7 +185,9 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
             # Remove reaction
             try:
                 await context.bot.set_message_reaction(
-                    chat_id=chat_id, message_id=message_id, reaction=[],
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reaction=[],
                 )
             except Exception:
                 logger.opt(exception=True).debug(
@@ -158,7 +199,9 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
 
     async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not verify_telegram(update):
-            logger.debug("Ignoring unauthorized /new command: update_id={}", update.update_id)
+            logger.debug(
+                "Ignoring unauthorized /new command: update_id={}", update.update_id
+            )
             return
         assert update.message is not None
         reply = await session_manager.reset_telegram_session()
@@ -166,7 +209,9 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
             await update.message.reply_text(reply)
             logger.info("Handled /new command: update_id={}", update.update_id)
 
-    async def handle_ask_user_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def handle_ask_user_callback(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         """Handle inline keyboard button presses for AskUserQuestion."""
         query = update.callback_query
         if query is None:
@@ -212,9 +257,13 @@ def create_telegram_app(token: str, session_manager: SessionManager) -> Applicat
     # Future.  Without it the two updates deadlock in the sequential queue.
     app = Application.builder().token(token).concurrent_updates(True).build()
     app.add_handler(CommandHandler("new", handle_new))
-    app.add_handler(CallbackQueryHandler(handle_ask_user_callback, pattern=r"^ask_user:"))
-    app.add_handler(MessageHandler(
-        (filters.TEXT | filters.PHOTO | filters.Document.ALL) & ~filters.COMMAND,
-        handle_message,
-    ))
+    app.add_handler(
+        CallbackQueryHandler(handle_ask_user_callback, pattern=r"^ask_user:")
+    )
+    app.add_handler(
+        MessageHandler(
+            (filters.TEXT | filters.PHOTO | filters.Document.ALL) & ~filters.COMMAND,
+            handle_message,
+        )
+    )
     return app

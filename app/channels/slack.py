@@ -9,6 +9,11 @@ from slack_bolt.async_app import AsyncApp
 
 from app.agent.types import Attachment
 from app.auth import verify_slack
+from app.orchestrator import (
+    ExecutionService,
+    InteractiveExecutionRequest,
+    is_duplicate_event,
+)
 from app.sessions.manager import SessionManager
 
 
@@ -16,6 +21,7 @@ def create_slack_app(
     bot_token: str,
     app_token: str,
     session_manager: SessionManager,
+    execution_service: ExecutionService,
 ) -> tuple[AsyncApp, AsyncSocketModeHandler]:
     """Build and return a Slack Bolt async app + Socket Mode handler."""
 
@@ -52,19 +58,23 @@ def create_slack_app(
                         ) as resp:
                             if resp.status == 200:
                                 data = await resp.read()
-                                attachments.append(Attachment(
-                                    filename=name,
-                                    mime_type=mime,
-                                    data=data,
-                                ))
+                                attachments.append(
+                                    Attachment(
+                                        filename=name,
+                                        mime_type=mime,
+                                        data=data,
+                                    )
+                                )
                             else:
                                 logger.warning(
                                     "Failed to download Slack file: name={}, status={}",
-                                    name, resp.status,
+                                    name,
+                                    resp.status,
                                 )
                     except Exception:
                         logger.opt(exception=True).warning(
-                            "Error downloading Slack file: name={}", name,
+                            "Error downloading Slack file: name={}",
+                            name,
                         )
 
         if not text and not attachments:
@@ -72,11 +82,18 @@ def create_slack_app(
             return
 
         # Use event_id from envelope if available, fall back to client_msg_id, then ts
-        event_id = event.get("event_id") or event.get("client_msg_id") or event.get("ts", "")
+        event_id = (
+            event.get("event_id") or event.get("client_msg_id") or event.get("ts", "")
+        )
         channel_id = event.get("channel", "")
         thread_ts = event.get("thread_ts")  # None if top-level message
         msg_ts = event.get("ts", "")
         reply_thread_ts = thread_ts or msg_ts
+
+        dedup_key = f"slack:{event_id}"
+        if is_duplicate_event(dedup_key):
+            logger.debug("Duplicate Slack event ignored: {}", event_id)
+            return
 
         # If there's a pending question for this thread, resolve it with the reply
         session_key = f"slack:thread:{channel_id}:{thread_ts or msg_ts}"
@@ -95,7 +112,9 @@ def create_slack_app(
         # React with 👀 immediately
         try:
             await client.reactions_add(
-                name="eyes", channel=channel_id, timestamp=msg_ts,
+                name="eyes",
+                channel=channel_id,
+                timestamp=msg_ts,
             )
         except Exception:
             logger.opt(exception=True).warning(
@@ -111,10 +130,15 @@ def create_slack_app(
             for i, q in enumerate(questions):
                 header = q.get("header", "")
                 question_text = q.get("question", "")
-                blocks.append({
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"*{header}*: {question_text}"},
-                })
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*{header}*: {question_text}",
+                        },
+                    }
+                )
                 buttons = [
                     {
                         "type": "button",
@@ -125,28 +149,42 @@ def create_slack_app(
                     for j, opt in enumerate(q.get("options", []))
                 ]
                 if buttons:
-                    blocks.append({
-                        "type": "actions",
-                        "block_id": f"ask_user_{i}",
-                        "elements": buttons,
-                    })
-            blocks.append({
-                "type": "context",
-                "elements": [{"type": "mrkdwn", "text": "Or type your answer in this thread."}],
-            })
+                    blocks.append(
+                        {
+                            "type": "actions",
+                            "block_id": f"ask_user_{i}",
+                            "elements": buttons,
+                        }
+                    )
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "Or type your answer in this thread.",
+                        }
+                    ],
+                }
+            )
             await client.chat_postMessage(
-                channel=channel_id, blocks=blocks, thread_ts=reply_thread_ts, text="Question",
+                channel=channel_id,
+                blocks=blocks,
+                thread_ts=reply_thread_ts,
+                text="Question",
             )
 
         try:
-            reply = await session_manager.handle_slack(
-                event_id=event_id,
-                channel_id=channel_id,
-                thread_ts=thread_ts or msg_ts,
-                text=text,
-                attachments=attachments or None,
-                send_question=send_question,
+            result = await execution_service.run_interactive(
+                InteractiveExecutionRequest(
+                    session_key=session_key,
+                    channel="slack",
+                    message=text,
+                    attachments=attachments or None,
+                    send_question=send_question,
+                )
             )
+            reply = result.text if result else None
             if reply:
                 await say(text=reply, thread_ts=reply_thread_ts)
                 logger.info(
@@ -162,7 +200,9 @@ def create_slack_app(
             # Remove reaction
             try:
                 await client.reactions_remove(
-                    name="eyes", channel=channel_id, timestamp=msg_ts,
+                    name="eyes",
+                    channel=channel_id,
+                    timestamp=msg_ts,
                 )
             except Exception:
                 logger.opt(exception=True).debug(
@@ -196,10 +236,12 @@ def create_slack_app(
             await client.chat_update(
                 channel=ch,
                 ts=msg.get("ts", ""),
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"Selected: *{label}*"},
-                }],
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": f"Selected: *{label}*"},
+                    }
+                ],
                 text=f"Selected: {label}",
             )
         except Exception:

@@ -34,11 +34,18 @@ def mock_bot():
     return bot
 
 
+@pytest.fixture()
+def execution_service():
+    service = AsyncMock()
+    service.run_background = AsyncMock()
+    return service
+
+
 @pytest.mark.asyncio
-async def test_start_registers_three_jobs(workspace: Path, mock_bot):
+async def test_start_registers_three_jobs(workspace: Path, mock_bot, execution_service):
     from app.scheduler.runner import start_scheduler
 
-    scheduler = await start_scheduler(mock_bot)
+    scheduler = await start_scheduler(mock_bot, execution_service)
     jobs = scheduler.get_jobs()
     assert len(jobs) == 3
     job_ids = {j.id for j in jobs}
@@ -55,20 +62,24 @@ async def test_shutdown_safe_when_not_started(workspace: Path):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_uses_configured_timezone(workspace: Path, mock_bot):
+async def test_scheduler_uses_configured_timezone(
+    workspace: Path, mock_bot, execution_service
+):
     from app.scheduler.runner import start_scheduler
 
-    scheduler = await start_scheduler(mock_bot)
+    scheduler = await start_scheduler(mock_bot, execution_service)
     assert str(scheduler.timezone) == "Asia/Taipei"
     scheduler.shutdown(wait=False)
 
 
 @pytest.mark.asyncio
-async def test_double_start_returns_same_scheduler(workspace: Path, mock_bot):
+async def test_double_start_returns_same_scheduler(
+    workspace: Path, mock_bot, execution_service
+):
     from app.scheduler.runner import start_scheduler
 
-    s1 = await start_scheduler(mock_bot)
-    s2 = await start_scheduler(mock_bot)
+    s1 = await start_scheduler(mock_bot, execution_service)
+    s2 = await start_scheduler(mock_bot, execution_service)
     assert s1 is s2
     # Still only 3 jobs
     assert len(s1.get_jobs()) == 3
@@ -76,13 +87,15 @@ async def test_double_start_returns_same_scheduler(workspace: Path, mock_bot):
 
 
 @pytest.mark.asyncio
-async def test_preflight_failure_still_starts(workspace: Path, mock_bot, caplog):
+async def test_preflight_failure_still_starts(
+    workspace: Path, mock_bot, execution_service, caplog
+):
     mock_bot.get_chat.side_effect = Exception("Chat not found")
 
     from app.scheduler.runner import start_scheduler
 
     with caplog.at_level(logging.WARNING):
-        scheduler = await start_scheduler(mock_bot)
+        scheduler = await start_scheduler(mock_bot, execution_service)
 
     assert scheduler is not None
     assert len(scheduler.get_jobs()) == 3

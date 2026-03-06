@@ -15,6 +15,7 @@ from app.history_ui import HISTORY_LIST_PAGE_HTML, render_history_detail_page
 from app.logging import configure_logging
 from app.monitoring.tracker import get_tracker
 from app.monitoring.ui import MONITOR_PAGE_HTML
+from app.orchestrator import ExecutionService
 from app.scheduler import shutdown_scheduler, start_scheduler
 from app.sessions.manager import SessionManager
 from app.sessions.store import SessionStore
@@ -32,7 +33,9 @@ async def lifespan(app: FastAPI):
 
     # --- Startup ---
     if shutil.which("gog") is None:
-        logger.warning("gogcli (gog) not found on PATH; Google Workspace features will not work")
+        logger.warning(
+            "gogcli (gog) not found on PATH; Google Workspace features will not work"
+        )
 
     if not settings.telegram_enabled and not settings.slack_enabled:
         raise RuntimeError(
@@ -45,12 +48,16 @@ async def lifespan(app: FastAPI):
     store = SessionStore(db_path)
     app.state.session_store = store
     manager = SessionManager(store)
+    execution_service = ExecutionService(store, manager)
+    app.state.execution_service = execution_service
     logger.info("Session store initialized at {}", db_path)
 
     # Telegram (long polling in background task)
     tg_app = None
     if settings.telegram_enabled:
-        tg_app = create_telegram_app(settings.telegram_bot_token, manager)
+        tg_app = create_telegram_app(
+            settings.telegram_bot_token, manager, execution_service
+        )
         await tg_app.initialize()
         await tg_app.start()
         await tg_app.updater.start_polling(drop_pending_updates=True)
@@ -69,15 +76,19 @@ async def lifespan(app: FastAPI):
             bot_token=settings.slack_bot_token,
             app_token=settings.slack_app_token,
             session_manager=manager,
+            execution_service=execution_service,
         )
         slack_task = asyncio.create_task(slack_handler.start_async())
-        logger.info("Slack Socket Mode started for allowed_user_id={}", settings.allowed_slack_user_id)
+        logger.info(
+            "Slack Socket Mode started for allowed_user_id={}",
+            settings.allowed_slack_user_id,
+        )
     else:
         logger.info("Slack channel disabled (no token configured)")
 
     # Scheduler (proactive jobs — requires Telegram for delivery)
     if tg_app is not None:
-        await start_scheduler(tg_app.bot)
+        await start_scheduler(tg_app.bot, execution_service)
         logger.info("Scheduler startup completed")
     else:
         logger.info("Scheduler skipped (requires Telegram for delivery)")
@@ -151,7 +162,7 @@ async def history_sessions(
                 "first_user_message": s.first_user_message,
             }
             for s in sessions
-        ]
+        ],
     }
 
 
@@ -233,7 +244,9 @@ async def monitor_active():
 async def monitor_active_detail(session_key: str):
     ex = get_tracker().get_active(session_key)
     if ex is None:
-        raise HTTPException(status_code=404, detail="No active execution for this session")
+        raise HTTPException(
+            status_code=404, detail="No active execution for this session"
+        )
     return _execution_detail(ex)
 
 
@@ -246,5 +259,7 @@ async def monitor_completed():
 async def monitor_completed_detail(session_key: str):
     ex = get_tracker().get_completed(session_key)
     if ex is None:
-        raise HTTPException(status_code=404, detail="No completed execution for this session")
+        raise HTTPException(
+            status_code=404, detail="No completed execution for this session"
+        )
     return _execution_detail(ex)

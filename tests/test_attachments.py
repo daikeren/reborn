@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agent.types import Attachment
+from app.orchestrator import ExecutionService, InteractiveExecutionRequest
 from app.sessions.manager import SessionManager
 from app.sessions.store import SessionStore
 
@@ -87,7 +88,9 @@ class TestClaudeBackendContent:
         doc.close()
 
         backend = self._backend()
-        att = Attachment(filename="doc.pdf", mime_type="application/pdf", data=pdf_bytes)
+        att = Attachment(
+            filename="doc.pdf", mime_type="application/pdf", data=pdf_bytes
+        )
         result = backend._build_content("check this", [att])
 
         assert isinstance(result, list)
@@ -100,7 +103,9 @@ class TestClaudeBackendContent:
 
     def test_text_file_attachment_extracts_content(self):
         backend = self._backend()
-        att = Attachment(filename="note.txt", mime_type="text/plain", data=b"some notes here")
+        att = Attachment(
+            filename="note.txt", mime_type="text/plain", data=b"some notes here"
+        )
         result = backend._build_content("read this", [att])
 
         assert isinstance(result, list)
@@ -113,7 +118,9 @@ class TestClaudeBackendContent:
 
     def test_unsupported_type_produces_text_placeholder(self):
         backend = self._backend()
-        att = Attachment(filename="data.bin", mime_type="application/octet-stream", data=b"\x00\x01")
+        att = Attachment(
+            filename="data.bin", mime_type="application/octet-stream", data=b"\x00\x01"
+        )
         result = backend._build_content("check this", [att])
 
         assert isinstance(result, list)
@@ -146,7 +153,9 @@ class TestClaudeBackendContent:
 
         backend = self._backend()
         img = Attachment(filename="photo.jpg", mime_type="image/jpeg", data=b"\xff")
-        pdf = Attachment(filename="doc.pdf", mime_type="application/pdf", data=pdf_bytes)
+        pdf = Attachment(
+            filename="doc.pdf", mime_type="application/pdf", data=pdf_bytes
+        )
         result = backend._build_content("mixed", [img, pdf])
 
         assert isinstance(result, list)
@@ -183,7 +192,9 @@ class TestCodexBackendAttachments:
         assert len(items) == 1
         item = items[0]
         assert item["type"] == "image_url"
-        expected_uri = f"data:image/jpeg;base64,{base64.b64encode(b'\xff\xd8').decode()}"
+        expected_uri = (
+            f"data:image/jpeg;base64,{base64.b64encode(b'\xff\xd8').decode()}"
+        )
         assert item["image_url"] == expected_uri
 
     def test_non_image_produces_text_placeholder(self):
@@ -208,7 +219,7 @@ class TestCodexBackendAttachments:
 
 
 # ---------------------------------------------------------------------------
-# Session manager attachment threading
+# Execution service attachment threading
 # ---------------------------------------------------------------------------
 
 
@@ -219,64 +230,51 @@ class FakeResult:
 
 
 @pytest.fixture()
-def manager(tmp_path):
+def execution_service(tmp_path):
     store = SessionStore(tmp_path / "test.db")
-    return SessionManager(store)
+    manager = SessionManager(store)
+    return ExecutionService(store, manager), store
 
 
 @pytest.mark.asyncio
-async def test_handle_telegram_passes_attachments(manager: SessionManager):
+async def test_run_agent_passes_attachments_to_agent_turn(execution_service):
+    service, _ = execution_service
     att = Attachment(filename="photo.jpg", mime_type="image/jpeg", data=b"\xff")
-    with patch.object(manager, "_run_agent", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = FakeResult(text="I see an image", session_id="s1")
-        await manager.handle_telegram(update_id=100, text="look", attachments=[att])
-
-    mock_run.assert_awaited_once()
-    assert mock_run.call_args.kwargs["attachments"] == [att]
-
-
-@pytest.mark.asyncio
-async def test_handle_telegram_no_attachments(manager: SessionManager):
-    with patch.object(manager, "_run_agent", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = FakeResult(text="hi", session_id="s1")
-        await manager.handle_telegram(update_id=101, text="hello")
-
-    assert mock_run.call_args.kwargs.get("attachments") is None
-
-
-@pytest.mark.asyncio
-async def test_handle_slack_passes_attachments(manager: SessionManager):
-    att = Attachment(filename="chart.png", mime_type="image/png", data=b"\x89PNG")
-    with patch.object(manager, "_run_agent", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = FakeResult(text="nice chart", session_id="s1")
-        await manager.handle_slack(
-            event_id="att-e1", channel_id="C1", thread_ts=None, text="check",
-            attachments=[att],
-        )
-
-    mock_run.assert_awaited_once()
-    assert mock_run.call_args.kwargs["attachments"] == [att]
-
-
-@pytest.mark.asyncio
-async def test_run_agent_passes_attachments_to_agent_turn(manager: SessionManager):
-    att = Attachment(filename="photo.jpg", mime_type="image/jpeg", data=b"\xff")
-    with patch("app.sessions.manager.agent_turn", new_callable=AsyncMock) as mock_at:
+    with patch(
+        "app.orchestrator.service.agent_turn", new_callable=AsyncMock
+    ) as mock_at:
         mock_at.return_value = FakeResult(text="ok", session_id="s1")
-        await manager._run_agent("key", "msg", channel="telegram", attachments=[att])
+        await service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="key",
+                channel="telegram",
+                message="msg",
+                attachments=[att],
+            )
+        )
 
     mock_at.assert_awaited_once()
     assert mock_at.call_args.kwargs["attachments"] == [att]
 
 
 @pytest.mark.asyncio
-async def test_run_agent_stores_attachment_note(manager: SessionManager):
+async def test_run_agent_stores_attachment_note(execution_service):
+    service, store = execution_service
     att = Attachment(filename="photo.jpg", mime_type="image/jpeg", data=b"\xff")
-    with patch("app.sessions.manager.agent_turn", new_callable=AsyncMock) as mock_at:
+    with patch(
+        "app.orchestrator.service.agent_turn", new_callable=AsyncMock
+    ) as mock_at:
         mock_at.return_value = FakeResult(text="ok", session_id="s1")
-        await manager._run_agent("key", "look at this", channel="telegram", attachments=[att])
+        await service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="key",
+                channel="telegram",
+                message="look at this",
+                attachments=[att],
+            )
+        )
 
-    messages = manager._store.get_messages("key")
+    messages = store.get_messages("key")
     user_msg = messages[0]
     assert user_msg.role == "user"
     assert "[Attachments: photo.jpg]" in user_msg.content
@@ -284,24 +282,43 @@ async def test_run_agent_stores_attachment_note(manager: SessionManager):
 
 
 @pytest.mark.asyncio
-async def test_run_agent_stores_attachment_only_no_text(manager: SessionManager):
+async def test_run_agent_stores_attachment_only_no_text(execution_service):
+    service, store = execution_service
     att = Attachment(filename="doc.pdf", mime_type="application/pdf", data=b"%PDF")
-    with patch("app.sessions.manager.agent_turn", new_callable=AsyncMock) as mock_at:
+    with patch(
+        "app.orchestrator.service.agent_turn", new_callable=AsyncMock
+    ) as mock_at:
         mock_at.return_value = FakeResult(text="ok", session_id="s1")
-        await manager._run_agent("key", "", channel="telegram", attachments=[att])
+        await service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="key",
+                channel="telegram",
+                message="",
+                attachments=[att],
+            )
+        )
 
-    messages = manager._store.get_messages("key")
+    messages = store.get_messages("key")
     user_msg = messages[0]
     assert user_msg.content == "[Attachments: doc.pdf]"
 
 
 @pytest.mark.asyncio
-async def test_run_agent_no_attachments_stores_plain_text(manager: SessionManager):
-    with patch("app.sessions.manager.agent_turn", new_callable=AsyncMock) as mock_at:
+async def test_run_agent_no_attachments_stores_plain_text(execution_service):
+    service, store = execution_service
+    with patch(
+        "app.orchestrator.service.agent_turn", new_callable=AsyncMock
+    ) as mock_at:
         mock_at.return_value = FakeResult(text="pong", session_id="s1")
-        await manager._run_agent("key", "ping", channel="telegram")
+        await service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="key",
+                channel="telegram",
+                message="ping",
+            )
+        )
 
-    messages = manager._store.get_messages("key")
+    messages = store.get_messages("key")
     user_msg = messages[0]
     assert user_msg.content == "ping"
     assert "[Attachments" not in user_msg.content

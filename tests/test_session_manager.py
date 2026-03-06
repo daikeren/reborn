@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from unittest.mock import AsyncMock, patch
+import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.sessions.manager import SessionManager
-from app.sessions.store import SessionStore
-
-
-@dataclass
-class FakeResult:
-    text: str
-    session_id: str | None = None
+from app.sessions.store import SessionRecord, SessionStore
 
 
 @pytest.fixture()
@@ -21,82 +15,69 @@ def manager(tmp_path):
     return SessionManager(store)
 
 
-# ---------------------------------------------------------------------------
-# handle_telegram passes channel="telegram"
-# ---------------------------------------------------------------------------
+def _record(*, created_at: datetime, last_active: datetime) -> SessionRecord:
+    return SessionRecord(
+        session_key="telegram:dm",
+        sdk_session_id="sid-1",
+        created_at=created_at.isoformat(),
+        last_active=last_active.isoformat(),
+        message_count=0,
+    )
+
+
+def test_should_resume_telegram_for_fresh_session(manager: SessionManager):
+    now = datetime.now(timezone.utc)
+    record = _record(
+        created_at=now - timedelta(minutes=30),
+        last_active=now - timedelta(minutes=10),
+    )
+
+    assert manager.should_resume_telegram(record) is True
+
+
+def test_should_not_resume_telegram_for_idle_session(manager: SessionManager):
+    now = datetime.now(timezone.utc)
+    record = _record(
+        created_at=now - timedelta(hours=1),
+        last_active=now - timedelta(hours=5),
+    )
+
+    assert manager.should_resume_telegram(record) is False
+    assert manager.telegram_reset_reason(record) == "idle_timeout"
 
 
 @pytest.mark.asyncio
-async def test_handle_telegram_passes_channel(manager: SessionManager):
-    with patch.object(manager, "_run_agent", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = FakeResult(text="hi", session_id="s1")
-        await manager.handle_telegram(update_id=1, text="hello")
+async def test_register_and_resolve_pending_question(manager: SessionManager):
+    future = manager.register_pending_question(
+        "telegram:dm",
+        [{"question": "Pick one", "options": [{"label": "A"}]}],
+    )
 
-    mock_run.assert_awaited_once()
-    assert mock_run.call_args.kwargs["channel"] == "telegram"
-
-
-# ---------------------------------------------------------------------------
-# handle_slack passes channel="slack"
-# ---------------------------------------------------------------------------
+    assert manager.has_pending_question("telegram:dm") is True
+    assert manager.resolve_pending_question("telegram:dm", "A") is True
+    assert await future == "A"
 
 
 @pytest.mark.asyncio
-async def test_handle_slack_passes_channel(manager: SessionManager):
-    with patch.object(manager, "_run_agent", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = FakeResult(text="hi", session_id="s1")
-        await manager.handle_slack(
-            event_id="e1", channel_id="C1", thread_ts=None, text="hello",
-        )
+async def test_build_question_handler_parses_selected_option(manager: SessionManager):
+    sent: list[list[dict]] = []
 
-    mock_run.assert_awaited_once()
-    assert mock_run.call_args.kwargs["channel"] == "slack"
+    async def send_question(questions: list[dict]) -> None:
+        sent.append(questions)
+        await asyncio.sleep(0)
+        manager.resolve_pending_question("telegram:dm", "1")
 
+    handler = manager.build_question_handler("telegram:dm", send_question)
+    assert handler is not None
 
-# ---------------------------------------------------------------------------
-# _run_agent passes channel to agent_turn (normal + retry paths)
-# ---------------------------------------------------------------------------
+    result = await handler(
+        [
+            {
+                "question": "Preferred channel?",
+                "options": [{"label": "Telegram"}, {"label": "Slack"}],
+            }
+        ]
+    )
 
-
-@pytest.mark.asyncio
-async def test_run_agent_passes_channel_to_agent_turn(manager: SessionManager):
-    with patch("app.sessions.manager.agent_turn", new_callable=AsyncMock) as mock_at:
-        mock_at.return_value = FakeResult(text="ok", session_id="s1")
-        await manager._run_agent("key", "msg", channel="telegram")
-
-    mock_at.assert_awaited_once()
-    assert mock_at.call_args.kwargs.get("channel") == "telegram"
-
-
-@pytest.mark.asyncio
-async def test_run_agent_retry_passes_channel(manager: SessionManager):
-    """When resume fails and retries with session_id=None, channel is preserved."""
-    call_count = 0
-
-    async def _fail_then_succeed(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise RuntimeError("resume failed")
-        return FakeResult(text="ok", session_id="s2")
-
-    with patch("app.sessions.manager.agent_turn", side_effect=_fail_then_succeed):
-        result = await manager._run_agent(
-            "key", "msg", resume_id="old-sess", channel="telegram",
-        )
-
-    assert result is not None
-    assert result.text == "ok"
-    assert call_count == 2
-
-
-@pytest.mark.asyncio
-async def test_run_agent_persists_message_history(manager: SessionManager):
-    with patch("app.sessions.manager.agent_turn", new_callable=AsyncMock) as mock_at:
-        mock_at.return_value = FakeResult(text="pong", session_id="s1")
-        result = await manager._run_agent("key", "ping", channel="telegram")
-
-    assert result is not None
-    messages = manager._store.get_messages("key")
-    assert [m.role for m in messages] == ["user", "assistant"]
-    assert [m.content for m in messages] == ["ping", "pong"]
+    assert sent
+    assert result == {"Preferred channel?": "Telegram"}

@@ -5,14 +5,19 @@ import time
 from loguru import logger
 from telegram import Bot
 
-from app.agent.runtime import agent_turn
 from app.config import settings
+from app.orchestrator import BackgroundExecutionRequest, ExecutionService
 from app.scheduler.delivery import deliver_to_telegram
 from app.scheduler.prompts import load_job_prompt
 from app.utils import now_tz
 
 
-async def _run_job(name: str, bot: Bot, chat_id: int) -> None:
+async def _run_job(
+    name: str,
+    bot: Bot,
+    chat_id: int,
+    execution_service: ExecutionService,
+) -> None:
     """Generic job runner: load prompt file, call agent, deliver or suppress."""
     jp = load_job_prompt(name)
     now = now_tz()
@@ -27,13 +32,15 @@ async def _run_job(name: str, bot: Bot, chat_id: int) -> None:
     )
 
     try:
-        result = await agent_turn(
-            prompt,
-            model=settings.background_model,
-            session_id=None,
-            allowed_tools=jp.tools,
-            max_turns=jp.max_turns,
-            channel="telegram",
+        result = await execution_service.run_background(
+            BackgroundExecutionRequest(
+                name=name,
+                channel="telegram",
+                prompt=prompt,
+                model=settings.background_model,
+                allowed_tools=jp.tools,
+                max_turns=jp.max_turns,
+            )
         )
     except Exception:
         logger.exception("Scheduler job failed during agent turn: name={}", name)
@@ -58,16 +65,22 @@ async def _run_job(name: str, bot: Bot, chat_id: int) -> None:
     )
 
 
-async def heartbeat_tick(bot: Bot, chat_id: int) -> None:
+async def heartbeat_tick(
+    bot: Bot, chat_id: int, execution_service: ExecutionService
+) -> None:
     """Periodic check — suppress if nothing to report."""
-    await _run_job("heartbeat", bot, chat_id)
+    await _run_job("heartbeat", bot, chat_id, execution_service)
 
 
-async def morning_brief(bot: Bot, chat_id: int) -> None:
+async def morning_brief(
+    bot: Bot, chat_id: int, execution_service: ExecutionService
+) -> None:
     """Daily morning briefing."""
-    await _run_job("morning_brief", bot, chat_id)
+    await _run_job("morning_brief", bot, chat_id, execution_service)
 
 
-async def weekly_review(bot: Bot, chat_id: int) -> None:
+async def weekly_review(
+    bot: Bot, chat_id: int, execution_service: ExecutionService
+) -> None:
     """Friday evening weekly review."""
-    await _run_job("weekly_review", bot, chat_id)
+    await _run_job("weekly_review", bot, chat_id, execution_service)

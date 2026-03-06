@@ -23,7 +23,8 @@ async def test_telegram_reaction_set_before_agent():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_telegram = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     update = MagicMock()
     update.update_id = 1
@@ -41,7 +42,7 @@ async def test_telegram_reaction_set_before_agent():
     context.bot.set_message_reaction = AsyncMock()
 
     with patch("app.channels.telegram.verify_telegram", return_value=True):
-        app = create_telegram_app("fake-token", sm)
+        app = create_telegram_app("fake-token", sm, execution_service)
         handler = _get_message_handler(app)
         await handler(update, context)
 
@@ -59,7 +60,8 @@ async def test_telegram_reaction_removed_after_agent():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_telegram = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     update = MagicMock()
     update.update_id = 2
@@ -77,12 +79,14 @@ async def test_telegram_reaction_removed_after_agent():
     context.bot.set_message_reaction = AsyncMock()
 
     with patch("app.channels.telegram.verify_telegram", return_value=True):
-        app = create_telegram_app("fake-token", sm)
+        app = create_telegram_app("fake-token", sm, execution_service)
         handler = _get_message_handler(app)
         await handler(update, context)
 
     context.bot.set_message_reaction.assert_awaited_once_with(
-        chat_id=123, message_id=456, reaction=[],
+        chat_id=123,
+        message_id=456,
+        reaction=[],
     )
 
 
@@ -94,7 +98,8 @@ async def test_telegram_reaction_add_failure_doesnt_crash():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_telegram = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     update = MagicMock()
     update.update_id = 3
@@ -112,11 +117,11 @@ async def test_telegram_reaction_add_failure_doesnt_crash():
     context.bot.set_message_reaction = AsyncMock()
 
     with patch("app.channels.telegram.verify_telegram", return_value=True):
-        app = create_telegram_app("fake-token", sm)
+        app = create_telegram_app("fake-token", sm, execution_service)
         handler = _get_message_handler(app)
         await handler(update, context)
 
-    sm.handle_telegram.assert_awaited_once()
+    execution_service.run_interactive.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -127,7 +132,8 @@ async def test_telegram_reaction_remove_failure_doesnt_crash():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_telegram = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     update = MagicMock()
     update.update_id = 4
@@ -145,7 +151,7 @@ async def test_telegram_reaction_remove_failure_doesnt_crash():
     context.bot.set_message_reaction = AsyncMock(side_effect=Exception("API error"))
 
     with patch("app.channels.telegram.verify_telegram", return_value=True):
-        app = create_telegram_app("fake-token", sm)
+        app = create_telegram_app("fake-token", sm, execution_service)
         handler = _get_message_handler(app)
         await handler(update, context)
 
@@ -160,7 +166,8 @@ async def test_slack_reaction_added_before_agent():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_slack = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     client = AsyncMock()
     say = AsyncMock()
@@ -174,12 +181,15 @@ async def test_slack_reaction_added_before_agent():
     }
 
     with patch("app.channels.slack.verify_slack", return_value=True):
-        app, _ = create_slack_app("bot-token", "app-token", sm)
+        app, handler = create_slack_app("bot-token", "app-token", sm, execution_service)
         handler_func = app._async_listeners[0].ack_function
         await handler_func(event=event, say=say, client=client)
+        await handler.close_async()
 
     client.reactions_add.assert_awaited_once_with(
-        name="eyes", channel="C123", timestamp="1234.5678",
+        name="eyes",
+        channel="C123",
+        timestamp="1234.5678",
     )
 
 
@@ -191,7 +201,8 @@ async def test_slack_reaction_removed_after_agent():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_slack = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     client = AsyncMock()
     say = AsyncMock()
@@ -205,12 +216,15 @@ async def test_slack_reaction_removed_after_agent():
     }
 
     with patch("app.channels.slack.verify_slack", return_value=True):
-        app, _ = create_slack_app("bot-token", "app-token", sm)
+        app, handler = create_slack_app("bot-token", "app-token", sm, execution_service)
         handler_func = app._async_listeners[0].ack_function
         await handler_func(event=event, say=say, client=client)
+        await handler.close_async()
 
     client.reactions_remove.assert_awaited_once_with(
-        name="eyes", channel="C123", timestamp="1234.5678",
+        name="eyes",
+        channel="C123",
+        timestamp="1234.5678",
     )
 
 
@@ -222,7 +236,8 @@ async def test_slack_reaction_add_failure_doesnt_crash():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_slack = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     client = AsyncMock()
     client.reactions_add = AsyncMock(side_effect=Exception("API error"))
@@ -237,11 +252,12 @@ async def test_slack_reaction_add_failure_doesnt_crash():
     }
 
     with patch("app.channels.slack.verify_slack", return_value=True):
-        app, _ = create_slack_app("bot-token", "app-token", sm)
+        app, handler = create_slack_app("bot-token", "app-token", sm, execution_service)
         handler_func = app._async_listeners[0].ack_function
         await handler_func(event=event, say=say, client=client)
+        await handler.close_async()
 
-    sm.handle_slack.assert_awaited_once()
+    execution_service.run_interactive.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -252,7 +268,8 @@ async def test_slack_reaction_remove_failure_doesnt_crash():
 
     sm = AsyncMock(spec=SessionManager)
     sm.has_pending_question.return_value = False
-    sm.handle_slack = AsyncMock(return_value="reply")
+    execution_service = AsyncMock()
+    execution_service.run_interactive = AsyncMock(return_value=MagicMock(text="reply"))
 
     client = AsyncMock()
     client.reactions_remove = AsyncMock(side_effect=Exception("API error"))
@@ -267,8 +284,9 @@ async def test_slack_reaction_remove_failure_doesnt_crash():
     }
 
     with patch("app.channels.slack.verify_slack", return_value=True):
-        app, _ = create_slack_app("bot-token", "app-token", sm)
+        app, handler = create_slack_app("bot-token", "app-token", sm, execution_service)
         handler_func = app._async_listeners[0].ack_function
         await handler_func(event=event, say=say, client=client)
+        await handler.close_async()
 
     say.assert_awaited()
