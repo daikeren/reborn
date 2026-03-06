@@ -102,6 +102,9 @@ After startup, you can open these pages in a browser:
 ## Common Commands
 
 ```bash
+# Install the Reborn bootstrap skill locally
+uv run python scripts/install_setup_skill.py
+
 # Run the full test suite
 uv run pytest
 
@@ -148,20 +151,42 @@ uv run python scripts/session_history.py --session-key "telegram:dm" --limit 200
 - `SOUL.md`: identity, behavioral rules, and tool guidance
 - `MEMORY.md`: factual memory maintained by the assistant, such as preferences, people, and company information
 - `memory/YYYY-MM-DD.md`: daily records
-- `prompts/heartbeat.md`
-- `prompts/morning_brief.md`
-- `prompts/weekly_review.md`
+- `jobs/heartbeat.md`
+- `jobs/morning_brief.md`
+- `jobs/weekly_review.md`
 - `skills/*/SKILL.md`: loadable skills
 
-## Prompt and Schedule Customization
+## Setup Flow
 
-Scheduled prompt files support YAML frontmatter:
+Recommended bootstrap path:
 
+1. Install the bootstrap skill:
+
+```bash
+uv run python scripts/install_setup_skill.py
+```
+
+If you do not want to clone the repo first, fetch the installer directly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/daikeren/reborn/main/scripts/install_setup_skill.py | python3 -
+```
+
+2. Invoke `Reborn Setup` inside Codex/Claude Code.
+3. Let the skill clone the repo, run `uv sync --dev`, inspect readiness, apply setup, and verify.
+
+Manual setup is still documented in `docs/SETUP.md`.
+
+## Scheduled Job Customization
+
+Scheduled job definition files support YAML frontmatter:
+
+- `schedule`: 5-field cron expression in the app timezone
 - `tools`: allowed tool list
 - `max_turns`: maximum number of turns
 - `suppress_token`: if the model outputs this token, no message is sent; commonly used when `heartbeat` has nothing to report
 
-See `workspace/prompts/*.md` for examples.
+See `workspace/jobs/*.md` for examples. The scheduler still falls back to legacy `workspace/prompts/*.md` definitions if `jobs/` has not been created yet.
 
 ## Project Structure
 
@@ -174,7 +199,7 @@ app/
   sessions/              # SQLite session store + manager
   mcp/                   # memory MCP server/tools
 tests/                   # pytest tests
-workspace/               # prompts, skills, memory, soul
+workspace/               # jobs, skills, memory, soul
 ```
 
 ## Security Notes
