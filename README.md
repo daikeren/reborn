@@ -55,6 +55,21 @@ Reborn is a personal AI assistant service that integrates Telegram and Slack, wi
 uv sync --dev
 ```
 
+### 2.1) Install git hooks
+
+```bash
+uv run prek install --install-hooks
+```
+
+Run all hooks on demand:
+
+```bash
+uv run prek run --all-files
+```
+
+The repo keeps its hook definitions in `.pre-commit-config.yaml`, which `prek` can consume directly.
+At the moment, the `ty` hook is scoped to `app/` so commits are gated on application code typing without being blocked by existing test-only typing debt.
+
 ### 3) Configure environment variables
 
 ```bash
@@ -88,6 +103,9 @@ After startup, you can open these pages in a browser:
 ```bash
 # Run the full test suite
 uv run pytest
+
+# Run formatting + type hooks across the repo
+uv run prek run --all-files
 
 # Run a focused subset
 uv run pytest tests/test_scheduler_jobs.py -k cadence

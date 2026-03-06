@@ -18,6 +18,7 @@ from claude_agent_sdk import (
     query,
 )
 from claude_agent_sdk.types import (
+    HookEvent,
     HookMatcher,
     PermissionResult,
     PermissionResultAllow,
@@ -163,10 +164,10 @@ class ClaudeBackend:
         # a permission request instead of auto-allowing via bypassPermissions.
         # Matching only this tool avoids "Stream closed" noise on every other
         # tool call.
-        hooks = None
+        hooks: dict[HookEvent, list[HookMatcher]] | None = None
         if can_use_tool_cb:
 
-            async def _noop_hook(input, tool_use_id, context):  # noqa: A002
+            async def _noop_hook(input, tool_use_id, context):  # noqa: A002, ANN001
                 return {}
 
             hooks = {

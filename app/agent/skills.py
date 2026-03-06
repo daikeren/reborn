@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from app.config import settings
 from app.frontmatter import parse_frontmatter
@@ -10,6 +11,7 @@ from app.frontmatter import parse_frontmatter
 logger = logging.getLogger(__name__)
 
 SKILL_FILENAME = "SKILL.md"
+ClaudeSkillModel = Literal["sonnet", "opus", "haiku", "inherit"]
 
 
 @dataclass(frozen=True)
@@ -17,7 +19,7 @@ class SkillDefinition:
     description: str
     prompt: str
     tools: list[str] | None = None
-    model: str | None = None
+    model: ClaudeSkillModel | None = None
 
 
 def load_skill(path: Path) -> tuple[str, SkillDefinition]:
@@ -38,11 +40,15 @@ def load_skill(path: Path) -> tuple[str, SkillDefinition]:
     if not body.strip():
         raise ValueError(f"{name}: prompt body must not be empty")
 
+    model = meta.get("model")
+    if model is not None and model not in {"sonnet", "opus", "haiku", "inherit"}:
+        raise ValueError(f"{name}: 'model' must be one of sonnet, opus, haiku, inherit")
+
     return name, SkillDefinition(
         description=description,
         prompt=body,
         tools=meta.get("tools"),
-        model=meta.get("model"),
+        model=model,
     )
 
 

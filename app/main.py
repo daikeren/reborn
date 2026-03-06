@@ -55,12 +55,15 @@ async def lifespan(app: FastAPI):
     # Telegram (long polling in background task)
     tg_app = None
     if settings.telegram_enabled:
-        tg_app = create_telegram_app(
-            settings.telegram_bot_token, manager, execution_service
-        )
+        telegram_bot_token = settings.telegram_bot_token
+        assert telegram_bot_token is not None
+        tg_app = create_telegram_app(telegram_bot_token, manager, execution_service)
         await tg_app.initialize()
         await tg_app.start()
-        await tg_app.updater.start_polling(drop_pending_updates=True)
+        updater = tg_app.updater
+        if updater is None:
+            raise RuntimeError("Telegram updater is unavailable")
+        await updater.start_polling(drop_pending_updates=True)
         logger.info(
             "Telegram polling started for allowed_user_id={}",
             settings.allowed_telegram_user_id,
@@ -72,9 +75,13 @@ async def lifespan(app: FastAPI):
     slack_handler = None
     slack_task = None
     if settings.slack_enabled:
+        slack_bot_token = settings.slack_bot_token
+        slack_app_token = settings.slack_app_token
+        assert slack_bot_token is not None
+        assert slack_app_token is not None
         _slack_app, slack_handler = create_slack_app(
-            bot_token=settings.slack_bot_token,
-            app_token=settings.slack_app_token,
+            bot_token=slack_bot_token,
+            app_token=slack_app_token,
             session_manager=manager,
             execution_service=execution_service,
         )
@@ -99,7 +106,9 @@ async def lifespan(app: FastAPI):
     logger.info("Service shutdown started")
     shutdown_scheduler()
     if tg_app is not None:
-        await tg_app.updater.stop()
+        updater = tg_app.updater
+        if updater is not None:
+            await updater.stop()
         await tg_app.stop()
         await tg_app.shutdown()
     if slack_handler is not None:

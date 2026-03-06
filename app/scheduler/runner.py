@@ -27,6 +27,7 @@ async def start_scheduler(
         return _scheduler
 
     chat_id = settings.allowed_telegram_user_id
+    assert chat_id is not None
     tz = ZoneInfo(settings.timezone)
 
     # Preflight: validate delivery target
