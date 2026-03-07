@@ -20,7 +20,12 @@ def _repo(tmp_path: Path) -> Path:
     )
     jobs = repo / "workspace" / "jobs"
     jobs.mkdir(parents=True)
-    for name in ("heartbeat.md", "morning_brief.md", "weekly_review.md"):
+    for name in (
+        "heartbeat.md",
+        "context_refresh.md",
+        "morning_brief.md",
+        "weekly_review.md",
+    ):
         (jobs / name).write_text(f"{name}\n", encoding="utf-8")
     return repo
 
@@ -149,6 +154,9 @@ def test_default_templates_are_optional_safe():
     heartbeat = (repo_root / "workspace" / "jobs" / "heartbeat.md").read_text(
         encoding="utf-8"
     )
+    context_refresh = (
+        repo_root / "workspace" / "jobs" / "context_refresh.md"
+    ).read_text(encoding="utf-8")
     morning = (repo_root / "workspace" / "jobs" / "morning_brief.md").read_text(
         encoding="utf-8"
     )
@@ -157,6 +165,7 @@ def test_default_templates_are_optional_safe():
     )
 
     assert "gog calendar events" not in heartbeat
+    assert "gog calendar events" not in context_refresh
     assert "gog calendar events" not in morning
     assert "gog calendar events" not in weekly
     assert "EXTRA_WRITABLE_ROOTS" not in morning

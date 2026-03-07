@@ -16,6 +16,7 @@ Reborn is a personal AI assistant service that integrates Telegram and Slack, wi
   - Event deduplication with a 5-minute TTL.
 - Proactive scheduling (APScheduler)
   - `heartbeat`: every 30 minutes.
+  - `context_refresh`: daily at `06:30`.
   - `morning_brief`: daily at `07:00`.
   - `weekly_review`: every Friday at `18:00`.
 - MCP capabilities
@@ -148,6 +149,7 @@ uv run python scripts/session_history.py --session-key "telegram:dm" --limit 200
 - `MEMORY.md`: factual memory maintained by the assistant, such as preferences, people, and company information
 - `memory/YYYY-MM-DD.md`: daily records
 - `jobs/heartbeat.md`
+- `jobs/context_refresh.md`
 - `jobs/morning_brief.md`
 - `jobs/weekly_review.md`
 - `skills/*/SKILL.md`: loadable skills

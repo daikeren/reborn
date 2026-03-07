@@ -1,18 +1,18 @@
-## Preferences
+## Facts
 - Language preferences (e.g., English, 繁體中文)
 - Communication style preferences
 - Tools and workflows you use daily
-
-## Projects
 - Active projects with brief descriptions
-
-## People
 - Key contacts with roles and context
-
-## Facts
 - Company/team information
 - Tech stack and infrastructure details
 - Important URLs and paths
+- Environment defaults and recurring constraints
 
-## Top of Mind
-- Current priorities and focus areas
+## Corrections
+- Explicit instructions about how the assistant should or should not behave
+- Preferences that override defaults
+
+## Discoveries
+- Repeatable workflows worth remembering
+- Useful retrieval hints about where information tends to live

@@ -70,6 +70,10 @@ class SessionStore:
             CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
             ON messages(session_key, created_at)
         """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_messages_created_at
+            ON messages(created_at)
+        """)
         self._conn.commit()
 
     def get(self, session_key: str) -> SessionRecord | None:
@@ -217,6 +221,37 @@ class SessionStore:
                 """,
                 (session_key, limit),
             ).fetchall()
+        rows.reverse()
+        return [MessageRecord(*row) for row in rows]
+
+    def query_recent_messages(
+        self,
+        *,
+        limit: int = 500,
+        since: str | None = None,
+        exclude_session_prefixes: tuple[str, ...] = (),
+    ) -> list[MessageRecord]:
+        where = []
+        params: list[str | int] = []
+        if since:
+            where.append("created_at >= ?")
+            params.append(since)
+        for prefix in exclude_session_prefixes:
+            where.append("session_key NOT LIKE ?")
+            params.append(f"{prefix}%")
+
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        params.append(limit)
+        rows = self._conn.execute(
+            f"""
+            SELECT id, session_key, sdk_session_id, role, content, created_at
+            FROM messages
+            {where_sql}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
         rows.reverse()
         return [MessageRecord(*row) for row in rows]
 

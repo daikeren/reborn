@@ -120,6 +120,28 @@ def test_query_messages_with_since_filter(store: SessionStore):
     assert [m.content for m in messages] == ["world"]
 
 
+def test_query_recent_messages_with_since_filter(store: SessionStore):
+    store.append_message("key1", "user", "old")
+    cutoff = datetime.now(timezone.utc).isoformat()
+    store.append_message("key1", "assistant", "new")
+
+    messages = store.query_recent_messages(since=cutoff, limit=10)
+
+    assert [m.content for m in messages] == ["new"]
+
+
+def test_query_recent_messages_excludes_session_prefixes(store: SessionStore):
+    store.append_message("telegram:dm", "user", "keep me")
+    store.append_message("scheduler:heartbeat", "assistant", "ignore me")
+
+    messages = store.query_recent_messages(
+        limit=10,
+        exclude_session_prefixes=("scheduler:",),
+    )
+
+    assert [m.session_key for m in messages] == ["telegram:dm"]
+
+
 # ---------------------------------------------------------------------------
 # get_active_stats
 # ---------------------------------------------------------------------------

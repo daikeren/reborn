@@ -106,10 +106,9 @@ cp workspace/MEMORY.md.example workspace/MEMORY.md
 
 Fill in the sections that apply to you:
 
-- **Preferences**: Your language, communication style
-- **Projects**: What you're working on
-- **People**: Key contacts your assistant should know about
-- **Facts**: Your tech stack, company info, important URLs
+- **Facts**: Stable information like language, workflows, people, projects, and important URLs
+- **Corrections**: Explicit instructions that override defaults
+- **Discoveries**: Repeatable workflows or retrieval hints worth remembering
 
 The assistant will update this file over time as it learns about you.
 
@@ -120,6 +119,7 @@ The `workspace/jobs/` directory contains proactive scheduled job definitions:
 | File | Schedule | Purpose |
 |---|---|---|
 | `heartbeat.md` | Every 30 min | Alert on anything urgent |
+| `context_refresh.md` | Daily 06:30 | Refresh long-term context and suggest skills |
 | `morning_brief.md` | Daily 07:00 | Daily briefing and priorities |
 | `weekly_review.md` | Friday 18:00 | Weekly summary and review |
 

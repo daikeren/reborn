@@ -42,6 +42,10 @@ class ExecutionService:
             self._session_locks[session_key] = lock
         return lock
 
+    @property
+    def session_store(self) -> SessionStore:
+        return self._store
+
     async def _run_interactive_locked(
         self,
         request: InteractiveExecutionRequest,

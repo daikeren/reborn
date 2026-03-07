@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.sessions.store import SessionStore
+
 
 @dataclass
 class FakeResult:
@@ -20,10 +22,12 @@ def _write_prompt(workspace: Path, name: str, content: str) -> None:
 
 
 @pytest.fixture()
-def execution_service():
+def execution_service(workspace: Path):
     service = AsyncMock()
     service.run_background = AsyncMock()
-    return service
+    service.session_store = SessionStore(workspace / "sessions.db")
+    yield service
+    service.session_store.close()
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +59,23 @@ tools:
 max_turns: 10
 ---
 Prepare daily brief.
+""",
+    )
+    _write_prompt(
+        workspace,
+        "context_refresh",
+        """\
+---
+schedule: "30 6 * * *"
+tools:
+  - mcp__memory__memory_search
+  - mcp__memory__memory_update_core
+max_turns: 12
+suppress_token: CONTEXT_REFRESH_OK
+---
+Refresh context.
+Do NOT update `Facts` automatically.
+Do NOT create or edit any files.
 """,
     )
     _write_prompt(
@@ -216,6 +237,108 @@ async def test_morning_brief_prompt_delivers(workspace: Path, execution_service)
     request = execution_service.run_background.call_args.args[0]
     assert request.name == "morning_brief"
     assert request.channel == "telegram"
+
+
+@pytest.mark.asyncio
+async def test_context_refresh_prompt_includes_recent_history_and_skill_summaries(
+    workspace: Path, execution_service
+):
+    skills_dir = workspace / "skills" / "google-workspace"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "SKILL.md").write_text(
+        """\
+---
+description: Use this skill for Google Workspace tasks.
+---
+Use gog.
+""",
+        encoding="utf-8",
+    )
+    execution_service.session_store.append_message(
+        "telegram:dm",
+        "user",
+        "Please use terse answers and check calendar before email.",
+    )
+    execution_service.session_store.append_message(
+        "telegram:dm",
+        "user",
+        "Prepare for my meeting with Sarah using email and notes.",
+    )
+    execution_service.session_store.append_message(
+        "telegram:dm",
+        "user",
+        "Prepare for my meeting with Sarah using email and notes.",
+    )
+    execution_service.session_store.append_message(
+        "scheduler:heartbeat",
+        "assistant",
+        "Weekly Review: repeated scheduler output should be ignored.",
+    )
+    execution_service.run_background.return_value = FakeResult(
+        text="CONTEXT_REFRESH_OK"
+    )
+
+    from app.scheduler.jobs import _run_job
+
+    await _run_job("context_refresh", AsyncMock(), 123, execution_service)
+
+    request = execution_service.run_background.call_args.args[0]
+    assert "## Recent Message History" in request.prompt
+    assert "## Available Skill Summaries" in request.prompt
+    assert (
+        "google-workspace: Use this skill for Google Workspace tasks." in request.prompt
+    )
+    assert (
+        "[telegram:dm] [user] Please use terse answers and check calendar before email."
+        in request.prompt
+    )
+    assert (
+        "[telegram:dm] [user] Prepare for my meeting with Sarah using email and notes."
+        in request.prompt
+    )
+    assert "Please use terse answers and check calendar before email." in request.prompt
+    assert "scheduler:heartbeat" not in request.prompt
+    assert request.prompt.endswith(
+        "Refresh context.\nDo NOT update `Facts` automatically.\nDo NOT create or edit any files.\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_context_refresh_suppresses_when_output_matches_token(
+    workspace: Path, execution_service
+):
+    bot = AsyncMock()
+    execution_service.run_background.return_value = FakeResult(
+        text="CONTEXT_REFRESH_OK"
+    )
+
+    from app.scheduler.jobs import _run_job
+
+    await _run_job("context_refresh", bot, 123, execution_service)
+
+    bot.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_context_refresh_uses_memory_update_tool_only_for_core_updates(
+    workspace: Path, execution_service
+):
+    bot = AsyncMock()
+    execution_service.run_background.return_value = FakeResult(
+        text="CONTEXT_REFRESH_OK"
+    )
+
+    from app.scheduler.jobs import _run_job
+
+    await _run_job("context_refresh", bot, 123, execution_service)
+
+    request = execution_service.run_background.call_args.args[0]
+    assert request.allowed_tools == [
+        "mcp__memory__memory_search",
+        "mcp__memory__memory_update_core",
+    ]
+    assert "Do NOT update `Facts` automatically." in request.prompt
+    assert "Do NOT create or edit any files." in request.prompt
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,10 @@ from telegram import Bot
 
 from app.config import settings
 from app.orchestrator import BackgroundExecutionRequest, ExecutionService
+from app.scheduler.context_refresh import (
+    CONTEXT_REFRESH_JOB,
+    build_context_refresh_prompt,
+)
 from app.scheduler.delivery import deliver_to_telegram
 from app.scheduler.prompts import load_job_prompt
 from app.utils import now_tz
@@ -22,7 +26,14 @@ async def _run_job(
     jp = load_job_prompt(name)
     now = now_tz()
     started_at = time.monotonic()
-    prompt = f"Current time: {now.strftime('%Y-%m-%d %H:%M %Z')}\n\n{jp.prompt}"
+    prompt_body = jp.prompt
+    if name == CONTEXT_REFRESH_JOB:
+        prompt_body = build_context_refresh_prompt(
+            jp.prompt,
+            execution_service.session_store,
+            now=now,
+        )
+    prompt = f"Current time: {now.strftime('%Y-%m-%d %H:%M %Z')}\n\n{prompt_body}"
     logger.info(
         "Scheduler job started: name={}, model={}, max_turns={}, tools={}",
         name,
