@@ -81,3 +81,17 @@ async def test_build_question_handler_parses_selected_option(manager: SessionMan
 
     assert sent
     assert result == {"Preferred channel?": "Telegram"}
+
+
+@pytest.mark.asyncio
+async def test_reset_telegram_session_deletes_requested_session_key(
+    manager: SessionManager,
+):
+    manager._store.upsert("telegram:chat:123", "sid-1")
+    manager._store.upsert("telegram:chat:456", "sid-2")
+
+    reply = await manager.reset_telegram_session("telegram:chat:123")
+
+    assert reply == "Session reset. Starting fresh."
+    assert manager._store.get("telegram:chat:123") is None
+    assert manager._store.get("telegram:chat:456") is not None

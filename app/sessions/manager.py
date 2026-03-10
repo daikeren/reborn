@@ -80,10 +80,12 @@ class SessionManager:
         pq.future.set_result(text)
         return True
 
-    async def reset_telegram_session(self) -> str | None:
+    async def reset_telegram_session(self, session_key: str) -> str | None:
         """Force reset the Telegram session. Returns confirmation text."""
-        self._store.delete("telegram:dm")
-        logger.info("Telegram session force reset via /new")
+        self._store.delete(session_key)
+        logger.info(
+            "Telegram session force reset via /new: session_key={}", session_key
+        )
         return "Session reset. Starting fresh."
 
     def should_resume_telegram(self, record: SessionRecord) -> bool:
