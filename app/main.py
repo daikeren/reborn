@@ -158,6 +158,7 @@ async def history_sessions(
         "sessions": [
             {
                 "session_key": s.session_key,
+                "chat_key": s.chat_key,
                 "sdk_session_id": s.sdk_session_id,
                 "created_at": s.created_at,
                 "last_active": s.last_active,

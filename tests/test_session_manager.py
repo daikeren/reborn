@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.sessions.manager import SessionManager
-from app.sessions.store import SessionRecord, SessionStore
+from app.sessions.store import TELEGRAM_PENDING_NEW, SessionRecord, SessionStore
 
 
 @pytest.fixture()
@@ -21,6 +21,7 @@ def _record(*, created_at: datetime, last_active: datetime) -> SessionRecord:
         sdk_session_id="sid-1",
         created_at=created_at.isoformat(),
         last_active=last_active.isoformat(),
+        chat_key="telegram:dm",
         message_count=0,
     )
 
@@ -87,11 +88,75 @@ async def test_build_question_handler_parses_selected_option(manager: SessionMan
 async def test_reset_telegram_session_deletes_requested_session_key(
     manager: SessionManager,
 ):
-    manager._store.upsert("telegram:chat:123", "sid-1")
-    manager._store.upsert("telegram:chat:456", "sid-2")
+    manager._store.set_active_telegram_conversation(
+        "telegram:chat:123",
+        "telegram:conversation:123:abc",
+    )
+    manager._store.set_active_telegram_conversation(
+        "telegram:chat:456",
+        "telegram:conversation:456:def",
+    )
 
     reply = await manager.reset_telegram_session("telegram:chat:123")
 
     assert reply == "Session reset. Starting fresh."
-    assert manager._store.get("telegram:chat:123") is None
-    assert manager._store.get("telegram:chat:456") is not None
+    assert (
+        manager._store.get_active_telegram_conversation("telegram:chat:123")
+        == TELEGRAM_PENDING_NEW
+    )
+    assert (
+        manager._store.get_active_telegram_conversation("telegram:chat:456")
+        == "telegram:conversation:456:def"
+    )
+
+
+def test_resolve_telegram_session_creates_new_conversation(manager: SessionManager):
+    result = manager.resolve_telegram_session("telegram:chat:123")
+
+    assert result.conversation_key.startswith("telegram:conversation:123:")
+    assert result.resume_session_id is None
+    assert (
+        manager._store.get_active_telegram_conversation("telegram:chat:123")
+        == result.conversation_key
+    )
+
+
+def test_resolve_telegram_session_resumes_active_conversation(manager: SessionManager):
+    manager._store.set_active_telegram_conversation(
+        "telegram:chat:123",
+        "telegram:conversation:123:abc",
+    )
+    manager._store.upsert(
+        "telegram:conversation:123:abc",
+        "sid-1",
+        chat_key="telegram:chat:123",
+    )
+
+    result = manager.resolve_telegram_session("telegram:chat:123")
+
+    assert result.conversation_key == "telegram:conversation:123:abc"
+    assert result.resume_session_id == "sid-1"
+
+
+def test_resolve_telegram_session_adopts_legacy_chat_record(manager: SessionManager):
+    manager._store.upsert("telegram:chat:123", "sid-legacy")
+
+    result = manager.resolve_telegram_session("telegram:chat:123")
+
+    assert result.conversation_key == "telegram:chat:123"
+    assert result.resume_session_id == "sid-legacy"
+    assert (
+        manager._store.get_active_telegram_conversation("telegram:chat:123")
+        == "telegram:chat:123"
+    )
+
+
+@pytest.mark.asyncio
+async def test_reset_prevents_reusing_legacy_chat_record(manager: SessionManager):
+    manager._store.upsert("telegram:chat:123", "sid-legacy")
+
+    await manager.reset_telegram_session("telegram:chat:123")
+    result = manager.resolve_telegram_session("telegram:chat:123")
+
+    assert result.conversation_key.startswith("telegram:conversation:123:")
+    assert result.resume_session_id is None

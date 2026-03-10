@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+TELEGRAM_PENDING_NEW = "__pending_new__"
+
 
 @dataclass
 class SessionRecord:
@@ -12,6 +14,7 @@ class SessionRecord:
     sdk_session_id: str
     created_at: str  # ISO 8601
     last_active: str  # ISO 8601
+    chat_key: str | None = None
     message_count: int = 0
     first_user_message: str | None = None
 
@@ -39,7 +42,8 @@ class SessionStore:
                 session_key TEXT PRIMARY KEY,
                 sdk_session_id TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                last_active TEXT NOT NULL
+                last_active TEXT NOT NULL,
+                chat_key TEXT
             )
         """)
         self._conn.commit()
@@ -55,6 +59,20 @@ class SessionStore:
             self._conn.execute(
                 "ALTER TABLE sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0"
             )
+        if "chat_key" not in cols:
+            self._conn.execute("ALTER TABLE sessions ADD COLUMN chat_key TEXT")
+
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_chat_state (
+                chat_key TEXT PRIMARY KEY,
+                conversation_key TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessions_chat_key_last_active
+            ON sessions(chat_key, last_active)
+        """)
 
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -78,25 +96,32 @@ class SessionStore:
 
     def get(self, session_key: str) -> SessionRecord | None:
         row = self._conn.execute(
-            "SELECT session_key, sdk_session_id, created_at, last_active, message_count "
+            "SELECT session_key, sdk_session_id, created_at, last_active, chat_key, message_count "
             "FROM sessions WHERE session_key = ?",
             (session_key,),
         ).fetchone()
         if row is None:
             return None
-        return SessionRecord(*row)
+        return self._session_record_from_row(row)
 
-    def upsert(self, session_key: str, sdk_session_id: str) -> SessionRecord:
+    def upsert(
+        self,
+        session_key: str,
+        sdk_session_id: str,
+        *,
+        chat_key: str | None = None,
+    ) -> SessionRecord:
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
             """
-            INSERT INTO sessions (session_key, sdk_session_id, created_at, last_active, message_count)
-            VALUES (?, ?, ?, ?, 0)
+            INSERT INTO sessions (session_key, sdk_session_id, created_at, last_active, chat_key, message_count)
+            VALUES (?, ?, ?, ?, ?, 0)
             ON CONFLICT(session_key) DO UPDATE SET
                 sdk_session_id = excluded.sdk_session_id,
+                chat_key = COALESCE(excluded.chat_key, sessions.chat_key),
                 last_active = excluded.last_active
             """,
-            (session_key, sdk_session_id, now, now),
+            (session_key, sdk_session_id, now, now, chat_key),
         )
         self._conn.commit()
         rec = self.get(session_key)
@@ -110,7 +135,7 @@ class SessionStore:
     def list_sessions(self, limit: int = 100, offset: int = 0) -> list[SessionRecord]:
         rows = self._conn.execute(
             """
-            SELECT session_key, sdk_session_id, created_at, last_active, message_count
+            SELECT session_key, sdk_session_id, created_at, last_active, chat_key, message_count
             FROM sessions
             ORDER BY last_active DESC
             LIMIT ?
@@ -118,7 +143,7 @@ class SessionStore:
             """,
             (limit, offset),
         ).fetchall()
-        return [SessionRecord(*row) for row in rows]
+        return [self._session_record_from_row(row) for row in rows]
 
     def list_session_summaries(
         self, limit: int = 100, offset: int = 0
@@ -130,6 +155,7 @@ class SessionStore:
                 s.sdk_session_id,
                 s.created_at,
                 s.last_active,
+                s.chat_key,
                 s.message_count,
                 (
                     SELECT m.content
@@ -145,7 +171,7 @@ class SessionStore:
             """,
             (limit, offset),
         ).fetchall()
-        return [SessionRecord(*row) for row in rows]
+        return [self._session_record_from_summary_row(row) for row in rows]
 
     def increment_message_count(self, session_key: str) -> int:
         """Increment message_count and return the new value."""
@@ -275,6 +301,39 @@ class SessionStore:
             "max_message_count": row[1],
         }
 
+    def get_active_telegram_conversation(self, chat_key: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT conversation_key FROM telegram_chat_state WHERE chat_key = ?",
+            (chat_key,),
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def set_active_telegram_conversation(
+        self, chat_key: str, conversation_key: str
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """
+            INSERT INTO telegram_chat_state (chat_key, conversation_key, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(chat_key) DO UPDATE SET
+                conversation_key = excluded.conversation_key,
+                updated_at = excluded.updated_at
+            """,
+            (chat_key, conversation_key, now),
+        )
+        self._conn.commit()
+
+    def clear_active_telegram_conversation(self, chat_key: str) -> None:
+        self._conn.execute(
+            "DELETE FROM telegram_chat_state WHERE chat_key = ?",
+            (chat_key,),
+        )
+        self._conn.commit()
+
+    def mark_telegram_session_reset(self, chat_key: str) -> None:
+        self.set_active_telegram_conversation(chat_key, TELEGRAM_PENDING_NEW)
+
     def touch(self, session_key: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
@@ -289,3 +348,49 @@ class SessionStore:
 
     def close(self) -> None:
         self._conn.close()
+
+    @staticmethod
+    def _infer_chat_key(session_key: str, chat_key: str | None) -> str | None:
+        if chat_key:
+            return chat_key
+        if session_key.startswith("telegram:chat:"):
+            return session_key
+        return None
+
+    def _session_record_from_row(self, row) -> SessionRecord:
+        (
+            session_key,
+            sdk_session_id,
+            created_at,
+            last_active,
+            chat_key,
+            message_count,
+        ) = row
+        return SessionRecord(
+            session_key=session_key,
+            sdk_session_id=sdk_session_id,
+            created_at=created_at,
+            last_active=last_active,
+            chat_key=self._infer_chat_key(session_key, chat_key),
+            message_count=message_count,
+        )
+
+    def _session_record_from_summary_row(self, row) -> SessionRecord:
+        (
+            session_key,
+            sdk_session_id,
+            created_at,
+            last_active,
+            chat_key,
+            message_count,
+            first_user_message,
+        ) = row
+        return SessionRecord(
+            session_key=session_key,
+            sdk_session_id=sdk_session_id,
+            created_at=created_at,
+            last_active=last_active,
+            chat_key=self._infer_chat_key(session_key, chat_key),
+            message_count=message_count,
+            first_user_message=first_user_message,
+        )

@@ -10,7 +10,7 @@ from app.config import settings
 from app.monitoring.tracker import get_tracker
 from app.monitoring.types import ExecutionEvent, ExecutionEventKind
 from app.sessions.manager import SessionManager
-from app.sessions.store import SessionRecord, SessionStore
+from app.sessions.store import SessionStore
 
 from .types import BackgroundExecutionRequest, InteractiveExecutionRequest
 
@@ -27,7 +27,9 @@ class ExecutionService:
         self,
         request: InteractiveExecutionRequest,
     ) -> AgentResult | None:
-        async with self._lock_for(request.session_key):
+        lock_key = request.chat_key or request.session_key
+        assert lock_key is not None
+        async with self._lock_for(lock_key):
             return await self._run_interactive_locked(request)
 
     async def run_background(self, request: BackgroundExecutionRequest) -> AgentResult:
@@ -51,18 +53,21 @@ class ExecutionService:
         request: InteractiveExecutionRequest,
     ) -> AgentResult | None:
         started_at = time.monotonic()
-        resume_id = self._resolve_resume_session_id(request)
+        conversation_key, resume_id, question_scope_key = (
+            self._resolve_execution_context(request)
+        )
         logger.info(
-            "Agent turn started: channel={}, session_key={}, resume={}, attachments={}",
+            "Agent turn started: channel={}, conversation_key={}, chat_key={}, resume={}, attachments={}",
             request.channel or "unknown",
-            request.session_key,
+            conversation_key,
+            request.chat_key,
             resume_id is not None,
             len(request.attachments) if request.attachments else 0,
         )
 
         if request.persist_user_message:
             self._store.append_message(
-                session_key=request.session_key,
+                session_key=conversation_key,
                 role="user",
                 content=self._stored_user_content(request.message, request.attachments),
                 sdk_session_id=resume_id,
@@ -70,7 +75,7 @@ class ExecutionService:
 
         tracker = get_tracker()
         execution = tracker.start_execution(
-            request.session_key,
+            conversation_key,
             channel=request.channel,
             backend=settings.agent_backend,
         )
@@ -85,7 +90,7 @@ class ExecutionService:
                 execution.current_turn += 1
 
         on_question = self._session_manager.build_question_handler(
-            request.session_key,
+            question_scope_key,
             request.send_question,
         )
 
@@ -101,8 +106,9 @@ class ExecutionService:
         except Exception:
             if resume_id is not None:
                 logger.warning(
-                    "Resume failed, falling back to new session: session_key={}",
-                    request.session_key,
+                    "Resume failed, falling back to new session: conversation_key={}, chat_key={}",
+                    conversation_key,
+                    request.chat_key,
                 )
                 try:
                     result = await self._call_agent_turn(
@@ -115,35 +121,39 @@ class ExecutionService:
                     )
                 except Exception:
                     logger.exception(
-                        "Agent turn failed after retry: session_key={}",
-                        request.session_key,
+                        "Agent turn failed after retry: conversation_key={}",
+                        conversation_key,
                     )
                     elapsed_ms = int((time.monotonic() - started_at) * 1000)
                     execution.mark_failed("Agent turn failed after retry", elapsed_ms)
-                    tracker.finish_execution(request.session_key)
+                    tracker.finish_execution(conversation_key)
                     return None
             else:
                 logger.exception(
-                    "Agent turn failed: session_key={}", request.session_key
+                    "Agent turn failed: conversation_key={}", conversation_key
                 )
                 elapsed_ms = int((time.monotonic() - started_at) * 1000)
                 execution.mark_failed("Agent turn failed", elapsed_ms)
-                tracker.finish_execution(request.session_key)
+                tracker.finish_execution(conversation_key)
                 return None
 
         if result.session_id:
-            self._store.upsert(request.session_key, result.session_id)
-            count = self._store.increment_message_count(request.session_key)
+            self._store.upsert(
+                conversation_key,
+                result.session_id,
+                chat_key=request.chat_key,
+            )
+            count = self._store.increment_message_count(conversation_key)
             if count > 0 and count % 100 == 0:
                 logger.warning(
-                    "Session message_count milestone: session_key={}, count={}",
-                    request.session_key,
+                    "Session message_count milestone: conversation_key={}, count={}",
+                    conversation_key,
                     count,
                 )
 
         if result.text:
             self._store.append_message(
-                session_key=request.session_key,
+                session_key=conversation_key,
                 role="assistant",
                 content=result.text,
                 sdk_session_id=result.session_id or resume_id,
@@ -151,11 +161,11 @@ class ExecutionService:
 
         elapsed_ms = int((time.monotonic() - started_at) * 1000)
         execution.mark_completed(result.text, elapsed_ms)
-        tracker.finish_execution(request.session_key)
+        tracker.finish_execution(conversation_key)
         logger.info(
-            "Agent turn completed: channel={}, session_key={}, elapsed_ms={}, reply_len={}, has_session_id={}",
+            "Agent turn completed: channel={}, conversation_key={}, elapsed_ms={}, reply_len={}, has_session_id={}",
             request.channel or "unknown",
-            request.session_key,
+            conversation_key,
             elapsed_ms,
             len(result.text),
             result.session_id is not None,
@@ -239,43 +249,39 @@ class ExecutionService:
             on_question=on_question,
         )
 
-    def _resolve_resume_session_id(
+    def _resolve_execution_context(
         self,
         request: InteractiveExecutionRequest,
-    ) -> str | None:
-        if request.resume_session_id is not None:
-            return request.resume_session_id
-
-        record = self._store.get(request.session_key)
-        if record is None:
-            return None
-
+    ) -> tuple[str, str | None, str]:
         if request.session_policy == "telegram":
-            return self._resume_telegram_session(request.session_key, record)
+            chat_key = request.chat_key or request.session_key
+            assert chat_key is not None
+            if request.session_key is None:
+                context = self._session_manager.resolve_telegram_session(chat_key)
+                resume_id = request.resume_session_id or context.resume_session_id
+                return context.conversation_key, resume_id, chat_key
 
-        return record.sdk_session_id
+            if request.resume_session_id is not None:
+                return request.session_key, request.resume_session_id, chat_key
 
-    def _resume_telegram_session(
-        self,
-        session_key: str,
-        record: SessionRecord,
-    ) -> str | None:
-        if self._session_manager.should_resume_telegram(record):
-            logger.debug(
-                "Telegram session resumed: session_key={}, sdk_session_id={}",
-                session_key,
-                record.sdk_session_id,
-            )
-            return record.sdk_session_id
+            record = self._store.get(request.session_key)
+            if record is None:
+                return request.session_key, None, chat_key
+            if self._session_manager.should_resume_telegram(record):
+                return request.session_key, record.sdk_session_id, chat_key
+            return request.session_key, None, chat_key
 
-        self._store.delete(session_key)
-        reason = self._session_manager.telegram_reset_reason(record)
-        logger.info(
-            "Telegram session reset: session_key={}, reason={}",
-            session_key,
-            reason,
+        conversation_key = request.session_key
+        assert conversation_key is not None
+        if request.resume_session_id is not None:
+            return conversation_key, request.resume_session_id, conversation_key
+
+        record = self._store.get(conversation_key)
+        return (
+            conversation_key,
+            record.sdk_session_id if record is not None else None,
+            conversation_key,
         )
-        return None
 
     @staticmethod
     def _stored_user_content(message: str, attachments) -> str:

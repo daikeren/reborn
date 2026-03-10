@@ -262,3 +262,142 @@ async def test_different_sessions_can_run_concurrently(service):
         )
 
     assert max_active_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_telegram_chat_reuses_active_conversation(service):
+    execution_service, store, _ = service
+    chat_key = "telegram:chat:42"
+
+    with patch(
+        "app.orchestrator.service.agent_turn", new_callable=AsyncMock
+    ) as mock_at:
+        mock_at.side_effect = [
+            FakeResult(text="first", session_id="sid-1"),
+            FakeResult(text="second", session_id="sid-1"),
+        ]
+
+        await execution_service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key=None,
+                chat_key=chat_key,
+                channel="telegram",
+                message="hello",
+                session_policy="telegram",
+            )
+        )
+        await execution_service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key=None,
+                chat_key=chat_key,
+                channel="telegram",
+                message="again",
+                session_policy="telegram",
+            )
+        )
+
+    assert mock_at.await_args_list[0].kwargs["session_id"] is None
+    assert mock_at.await_args_list[1].kwargs["session_id"] == "sid-1"
+    sessions = store.list_sessions(limit=10)
+    assert len(sessions) == 1
+    assert sessions[0].chat_key == chat_key
+    assert sessions[0].session_key.startswith("telegram:conversation:42:")
+    assert [m.content for m in store.get_messages(sessions[0].session_key)] == [
+        "hello",
+        "first",
+        "again",
+        "second",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_telegram_new_starts_fresh_conversation(service):
+    execution_service, store, manager = service
+    chat_key = "telegram:chat:42"
+
+    with patch(
+        "app.orchestrator.service.agent_turn", new_callable=AsyncMock
+    ) as mock_at:
+        mock_at.side_effect = [
+            FakeResult(text="first", session_id="sid-1"),
+            FakeResult(text="second", session_id="sid-2"),
+        ]
+
+        await execution_service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key=None,
+                chat_key=chat_key,
+                channel="telegram",
+                message="hello",
+                session_policy="telegram",
+            )
+        )
+        await manager.reset_telegram_session(chat_key)
+        await execution_service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key=None,
+                chat_key=chat_key,
+                channel="telegram",
+                message="new topic",
+                session_policy="telegram",
+            )
+        )
+
+    assert mock_at.await_args_list[0].kwargs["session_id"] is None
+    assert mock_at.await_args_list[1].kwargs["session_id"] is None
+    sessions = store.list_sessions(limit=10)
+    assert len(sessions) == 2
+    assert {s.chat_key for s in sessions} == {chat_key}
+    assert len({s.session_key for s in sessions}) == 2
+
+
+@pytest.mark.asyncio
+async def test_same_telegram_chat_is_locked_by_chat_key(service):
+    execution_service, _, _ = service
+    chat_key = "telegram:chat:shared"
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    active_calls = 0
+    max_active_calls = 0
+
+    async def slow_turn(*args, **kwargs):
+        nonlocal active_calls, max_active_calls
+        active_calls += 1
+        max_active_calls = max(max_active_calls, active_calls)
+        if not first_started.is_set():
+            first_started.set()
+            await release_first.wait()
+        await asyncio.sleep(0)
+        active_calls -= 1
+        return FakeResult(text="ok", session_id="sid")
+
+    with patch("app.orchestrator.service.agent_turn", side_effect=slow_turn):
+        task1 = asyncio.create_task(
+            execution_service.run_interactive(
+                InteractiveExecutionRequest(
+                    session_key=None,
+                    chat_key=chat_key,
+                    channel="telegram",
+                    message="one",
+                    session_policy="telegram",
+                )
+            )
+        )
+        await first_started.wait()
+        task2 = asyncio.create_task(
+            execution_service.run_interactive(
+                InteractiveExecutionRequest(
+                    session_key=None,
+                    chat_key=chat_key,
+                    channel="telegram",
+                    message="two",
+                    session_policy="telegram",
+                )
+            )
+        )
+        await asyncio.sleep(0)
+        assert max_active_calls == 1
+        release_first.set()
+        await asyncio.gather(task1, task2)
+
+    assert max_active_calls == 1

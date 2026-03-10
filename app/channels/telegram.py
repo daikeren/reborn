@@ -65,7 +65,7 @@ def create_telegram_app(
 
         assert update.message is not None
         text = update.message.text or update.message.caption or ""
-        session_key = _session_key_for_chat(update.message.chat_id)
+        chat_key = _session_key_for_chat(update.message.chat_id)
 
         # Download attachments
         attachments: list[Attachment] = []
@@ -106,8 +106,8 @@ def create_telegram_app(
             return
 
         # If there's a pending question, resolve it with the reply
-        if session_manager.has_pending_question(session_key):
-            session_manager.answer_question(session_key, text)
+        if session_manager.has_pending_question(chat_key):
+            session_manager.answer_question(chat_key, text)
             return
 
         chat_id = update.message.chat_id
@@ -160,7 +160,8 @@ def create_telegram_app(
         try:
             result = await execution_service.run_interactive(
                 InteractiveExecutionRequest(
-                    session_key=session_key,
+                    session_key=None,
+                    chat_key=chat_key,
                     channel="telegram",
                     message=text,
                     attachments=attachments or None,
@@ -211,8 +212,8 @@ def create_telegram_app(
             )
             return
         assert update.message is not None
-        session_key = _session_key_for_chat(update.message.chat_id)
-        reply = await session_manager.reset_telegram_session(session_key)
+        chat_key = _session_key_for_chat(update.message.chat_id)
+        reply = await session_manager.reset_telegram_session(chat_key)
         if reply:
             await update.message.reply_text(reply)
             logger.info("Handled /new command: update_id={}", update.update_id)
@@ -239,8 +240,8 @@ def create_telegram_app(
         # Look up the option label from the pending question
         chat = update.effective_chat
         chat_id = chat.id if chat is not None else None
-        session_key = _session_key_for_chat(chat_id)
-        pq = session_manager._pending_questions.get(session_key)
+        chat_key = _session_key_for_chat(chat_id)
+        pq = session_manager._pending_questions.get(chat_key)
         if pq is None:
             return
         try:
@@ -250,7 +251,7 @@ def create_telegram_app(
         except (IndexError, KeyError, ValueError):
             label = data
 
-        resolved = session_manager.answer_question(session_key, label)
+        resolved = session_manager.answer_question(chat_key, label)
         logger.info(
             "Telegram ask_user button pressed: data={}, label={}, resolved={}",
             data,

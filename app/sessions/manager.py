@@ -4,12 +4,13 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from loguru import logger
 
 from app.config import settings
-from app.sessions.store import SessionRecord, SessionStore
+from app.sessions.store import TELEGRAM_PENDING_NEW, SessionRecord, SessionStore
 
 # Callback that sends rendered question widgets to the user's channel.
 SendQuestionCallback = Callable[[list[dict]], Awaitable[None]]
@@ -26,6 +27,12 @@ class PendingQuestion:
     future: asyncio.Future[str] = field(
         default_factory=lambda: asyncio.get_event_loop().create_future()
     )
+
+
+@dataclass(frozen=True)
+class TelegramSessionContext:
+    conversation_key: str
+    resume_session_id: str | None = None
 
 
 # Session reset thresholds
@@ -82,11 +89,63 @@ class SessionManager:
 
     async def reset_telegram_session(self, session_key: str) -> str | None:
         """Force reset the Telegram session. Returns confirmation text."""
-        self._store.delete(session_key)
-        logger.info(
-            "Telegram session force reset via /new: session_key={}", session_key
-        )
+        self._pending_questions.pop(session_key, None)
+        self._store.mark_telegram_session_reset(session_key)
+        logger.info("Telegram session force reset via /new: chat_key={}", session_key)
         return "Session reset. Starting fresh."
+
+    def resolve_telegram_session(self, chat_key: str) -> TelegramSessionContext:
+        conversation_key = self._store.get_active_telegram_conversation(chat_key)
+        if conversation_key == TELEGRAM_PENDING_NEW:
+            return self._create_telegram_conversation(chat_key)
+        if conversation_key is not None:
+            record = self._store.get(conversation_key)
+            if record is None:
+                return TelegramSessionContext(conversation_key=conversation_key)
+            if self.should_resume_telegram(record):
+                logger.debug(
+                    "Telegram session resumed: chat_key={}, conversation_key={}, sdk_session_id={}",
+                    chat_key,
+                    conversation_key,
+                    record.sdk_session_id,
+                )
+                return TelegramSessionContext(
+                    conversation_key=conversation_key,
+                    resume_session_id=record.sdk_session_id,
+                )
+
+            reason = self.telegram_reset_reason(record)
+            logger.info(
+                "Telegram session reset: chat_key={}, conversation_key={}, reason={}",
+                chat_key,
+                conversation_key,
+                reason,
+            )
+            return self._create_telegram_conversation(chat_key)
+
+        legacy_record = self._store.get(chat_key)
+        if legacy_record is not None:
+            if self.should_resume_telegram(legacy_record):
+                self._store.set_active_telegram_conversation(chat_key, chat_key)
+                logger.debug(
+                    "Telegram legacy session adopted: chat_key={}, sdk_session_id={}",
+                    chat_key,
+                    legacy_record.sdk_session_id,
+                )
+                return TelegramSessionContext(
+                    conversation_key=chat_key,
+                    resume_session_id=legacy_record.sdk_session_id,
+                )
+
+            reason = self.telegram_reset_reason(legacy_record)
+            logger.info(
+                "Telegram legacy session expired: chat_key={}, reason={}",
+                chat_key,
+                reason,
+            )
+            return self._create_telegram_conversation(chat_key)
+
+        return self._create_telegram_conversation(chat_key)
 
     def should_resume_telegram(self, record: SessionRecord) -> bool:
         return not _needs_reset(record.created_at) and not _is_idle(record.last_active)
@@ -161,3 +220,19 @@ class SessionManager:
             return self._parse_answer(raw_reply, questions)
 
         return on_question
+
+    @staticmethod
+    def _new_telegram_conversation_key(chat_key: str) -> str:
+        suffix = chat_key.removeprefix("telegram:chat:")
+        suffix = suffix if suffix != chat_key else chat_key.replace(":", "_")
+        return f"telegram:conversation:{suffix}:{uuid4().hex[:12]}"
+
+    def _create_telegram_conversation(self, chat_key: str) -> TelegramSessionContext:
+        conversation_key = self._new_telegram_conversation_key(chat_key)
+        self._store.set_active_telegram_conversation(chat_key, conversation_key)
+        logger.info(
+            "Telegram conversation created: chat_key={}, conversation_key={}",
+            chat_key,
+            conversation_key,
+        )
+        return TelegramSessionContext(conversation_key=conversation_key)

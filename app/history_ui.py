@@ -162,8 +162,8 @@ HISTORY_LIST_PAGE_HTML = """<!doctype html>
 <body>
   <div class=\"wrap\">
     <div class=\"panel\">
-      <h1>History Sessions</h1>
-      <div class=\"sub\">Browse all session records, then open detail page for full message history. | <a href=\"/monitor\" style=\"color:#0d5bd7;font-weight:600;text-decoration:none;\">Session Monitor</a></div>
+      <h1>History Conversations</h1>
+      <div class=\"sub\">Browse conversation records, then open detail page for full message history. | <a href=\"/monitor\" style=\"color:#0d5bd7;font-weight:600;text-decoration:none;\">Session Monitor</a></div>
 
       <div class=\"toolbar\">
         <div class=\"field\">
@@ -183,7 +183,7 @@ HISTORY_LIST_PAGE_HTML = """<!doctype html>
         <table>
           <thead>
             <tr>
-              <th>Session</th>
+              <th>Conversation</th>
               <th>Messages</th>
               <th>Last Active</th>
               <th>Created</th>
@@ -232,11 +232,11 @@ HISTORY_LIST_PAGE_HTML = """<!doctype html>
 
     async function load() {
       syncUrl();
-      metaEl.textContent = "Loading sessions...";
+      metaEl.textContent = "Loading conversations...";
       const res = await fetch(`/api/history/sessions?page=${page}&page_size=${pageSize}`);
       if (!res.ok) {
-        metaEl.textContent = "Failed to load sessions.";
-        setEmpty("Cannot load sessions.");
+        metaEl.textContent = "Failed to load conversations.";
+        setEmpty("Cannot load conversations.");
         return;
       }
 
@@ -252,14 +252,18 @@ HISTORY_LIST_PAGE_HTML = """<!doctype html>
           const row = document.createElement("tr");
 
           const sessionCell = document.createElement("td");
-          sessionCell.setAttribute("data-label", "Session");
+          sessionCell.setAttribute("data-label", "Conversation");
           const link = document.createElement("a");
           link.className = "session-link";
           link.href = `/history/session/${encodeURIComponent(s.session_key)}`;
           const firstUser = (s.first_user_message || "[no user message]").replace(/\\s+/g, " ").trim();
           const shortFirstUser = firstUser.length > 80 ? `${firstUser.slice(0, 77)}...` : firstUser;
-          link.textContent = `${shortFirstUser} (${s.session_key})`;
+          link.textContent = shortFirstUser;
           sessionCell.appendChild(link);
+          const meta = document.createElement("div");
+          meta.className = "session-id";
+          meta.textContent = `conversation: ${s.session_key}${s.chat_key ? ` | chat: ${s.chat_key}` : ""}`;
+          sessionCell.appendChild(meta);
 
           const messageCell = document.createElement("td");
           messageCell.setAttribute("data-label", "Messages");
@@ -283,7 +287,7 @@ HISTORY_LIST_PAGE_HTML = """<!doctype html>
 
       prevBtn.disabled = page <= 1;
       nextBtn.disabled = page >= totalPages;
-      metaEl.textContent = `Total sessions: ${data.total}`;
+      metaEl.textContent = `Total conversations: ${data.total}`;
       pageMetaEl.textContent = `Page ${data.page} / ${data.total_pages}`;
     }
 
@@ -320,7 +324,7 @@ HISTORY_DETAIL_PAGE_TEMPLATE = """<!doctype html>
 <head>
   <meta charset=\"utf-8\" />
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-  <title>Reborn History - Detail</title>
+  <title>Reborn History - Conversation Detail</title>
   <style>
     :root {
       --bg: #eef2f7;
@@ -451,7 +455,7 @@ HISTORY_DETAIL_PAGE_TEMPLATE = """<!doctype html>
     <div class=\"panel\">
       <div class=\"top\">
         <h1 id=\"title\"></h1>
-        <a class=\"btn\" href=\"/history\">Back to Sessions</a>
+        <a class=\"btn\" href=\"/history\">Back to Conversations</a>
       </div>
       <div class=\"controls\">
         <div>
@@ -484,7 +488,7 @@ HISTORY_DETAIL_PAGE_TEMPLATE = """<!doctype html>
     const metaEl = document.getElementById("meta");
     const messagesEl = document.getElementById("messages");
 
-    titleEl.textContent = `Session Detail: ${sessionKey}`;
+    titleEl.textContent = `Conversation Detail: ${sessionKey}`;
 
     function setMeta(text) { metaEl.textContent = text; }
 

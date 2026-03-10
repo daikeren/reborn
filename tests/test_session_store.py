@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.sessions.store import SessionStore
+from app.sessions.store import TELEGRAM_PENDING_NEW, SessionStore
 
 
 @pytest.fixture()
@@ -100,7 +100,7 @@ def test_list_sessions_pagination_and_count(store: SessionStore):
 
 
 def test_list_session_summaries_uses_first_user_message(store: SessionStore):
-    store.upsert("a", "sdk-a")
+    store.upsert("a", "sdk-a", chat_key="telegram:chat:1")
     store.append_message("a", "user", "first question")
     store.append_message("a", "assistant", "first answer")
     store.append_message("a", "user", "second question")
@@ -108,7 +108,41 @@ def test_list_session_summaries_uses_first_user_message(store: SessionStore):
     summaries = store.list_session_summaries(limit=10, offset=0)
     assert len(summaries) == 1
     assert summaries[0].session_key == "a"
+    assert summaries[0].chat_key == "telegram:chat:1"
     assert summaries[0].first_user_message == "first question"
+
+
+def test_get_infers_chat_key_for_legacy_telegram_session(store: SessionStore):
+    store.upsert("telegram:chat:123", "sdk-1")
+
+    record = store.get("telegram:chat:123")
+
+    assert record is not None
+    assert record.chat_key == "telegram:chat:123"
+
+
+def test_active_telegram_conversation_mapping_round_trip(store: SessionStore):
+    store.set_active_telegram_conversation(
+        "telegram:chat:123",
+        "telegram:conversation:123:abc",
+    )
+
+    assert (
+        store.get_active_telegram_conversation("telegram:chat:123")
+        == "telegram:conversation:123:abc"
+    )
+
+    store.clear_active_telegram_conversation("telegram:chat:123")
+    assert store.get_active_telegram_conversation("telegram:chat:123") is None
+
+
+def test_mark_telegram_session_reset_sets_pending_marker(store: SessionStore):
+    store.mark_telegram_session_reset("telegram:chat:123")
+
+    assert (
+        store.get_active_telegram_conversation("telegram:chat:123")
+        == TELEGRAM_PENDING_NEW
+    )
 
 
 def test_query_messages_with_since_filter(store: SessionStore):

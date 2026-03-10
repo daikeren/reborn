@@ -11,9 +11,10 @@ SendQuestionCallback = Callable[[list[dict]], Awaitable[None]]
 
 @dataclass(slots=True)
 class InteractiveExecutionRequest:
-    session_key: str
+    session_key: str | None
     channel: str | None
     message: str
+    chat_key: str | None = None
     attachments: list[Attachment] | None = None
     resume_session_id: str | None = None
     send_question: SendQuestionCallback | None = None

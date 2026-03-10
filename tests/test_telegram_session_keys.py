@@ -22,7 +22,7 @@ def _get_new_handler(app):
 
 
 @pytest.mark.asyncio
-async def test_telegram_message_uses_chat_scoped_session_key():
+async def test_telegram_message_uses_chat_scoped_chat_key():
     from app.channels.telegram import create_telegram_app
     from app.sessions.manager import SessionManager
 
@@ -54,7 +54,8 @@ async def test_telegram_message_uses_chat_scoped_session_key():
 
     sm.has_pending_question.assert_called_once_with("telegram:chat:987654")
     request = execution_service.run_interactive.await_args.args[0]
-    assert request.session_key == "telegram:chat:987654"
+    assert request.chat_key == "telegram:chat:987654"
+    assert request.session_key is None
 
 
 @pytest.mark.asyncio
