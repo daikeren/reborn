@@ -19,6 +19,8 @@ class InteractiveExecutionRequest:
     resume_session_id: str | None = None
     send_question: SendQuestionCallback | None = None
     persist_user_message: bool = True
+    stored_role: str = "user"
+    stored_message: str | None = None
     session_policy: Literal["default", "telegram"] = "default"
 
 

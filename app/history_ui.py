@@ -163,7 +163,7 @@ HISTORY_LIST_PAGE_HTML = """<!doctype html>
   <div class=\"wrap\">
     <div class=\"panel\">
       <h1>History Conversations</h1>
-      <div class=\"sub\">Browse conversation records, then open detail page for full message history. | <a href=\"/monitor\" style=\"color:#0d5bd7;font-weight:600;text-decoration:none;\">Session Monitor</a></div>
+      <div class=\"sub\">Browse conversation records, then open detail page for full message history. | <a href=\"/dashboard\" style=\"color:#0d5bd7;font-weight:600;text-decoration:none;\">Dashboard</a> | <a href=\"/monitor\" style=\"color:#0d5bd7;font-weight:600;text-decoration:none;\">Session Monitor</a></div>
 
       <div class=\"toolbar\">
         <div class=\"field\">
@@ -335,6 +335,7 @@ HISTORY_DETAIL_PAGE_TEMPLATE = """<!doctype html>
       --accent: #0d5bd7;
       --user: #e8f2ff;
       --assistant: #edf8ec;
+      --note: #fff6db;
     }
     body {
       margin: 0;
@@ -430,6 +431,7 @@ HISTORY_DETAIL_PAGE_TEMPLATE = """<!doctype html>
     }
     .msg.user { background: var(--user); }
     .msg.assistant { background: var(--assistant); }
+    .msg.note { background: var(--note); }
     .msg-head {
       display: flex;
       justify-content: space-between;
@@ -455,6 +457,7 @@ HISTORY_DETAIL_PAGE_TEMPLATE = """<!doctype html>
     <div class=\"panel\">
       <div class=\"top\">
         <h1 id=\"title\"></h1>
+        <a class=\"btn\" href=\"/dashboard?tab=sessions\">Open Dashboard</a>
         <a class=\"btn\" href=\"/history\">Back to Conversations</a>
       </div>
       <div class=\"controls\">

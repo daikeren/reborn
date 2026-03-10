@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agent.types import Attachment
+from app.monitoring.tracker import ExecutionTracker
 from app.orchestrator import ExecutionService, InteractiveExecutionRequest
 from app.sessions.manager import SessionManager
 from app.sessions.store import SessionStore
@@ -401,3 +402,72 @@ async def test_same_telegram_chat_is_locked_by_chat_key(service):
         await asyncio.gather(task1, task2)
 
     assert max_active_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_start_interactive_cancel_marks_execution_cancelled(service):
+    execution_service, store, _ = service
+    tracker = ExecutionTracker()
+    started = asyncio.Event()
+
+    async def slow_turn(*args, **kwargs):
+        started.set()
+        await asyncio.sleep(10)
+        return FakeResult(text="ok", session_id="sid")
+
+    with (
+        patch("app.orchestrator.service.get_tracker", return_value=tracker),
+        patch("app.orchestrator.service.agent_turn", side_effect=slow_turn),
+    ):
+        execution_id = execution_service.start_interactive(
+            InteractiveExecutionRequest(
+                session_key="web:session:test",
+                channel="web",
+                message="hello",
+            )
+        )
+        await started.wait()
+        assert execution_service.cancel_execution(execution_id) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    completed = tracker.get_completed(execution_id)
+    assert completed is not None
+    assert completed.status == "cancelled"
+    messages = store.get_messages("web:session:test")
+    assert [m.role for m in messages] == ["user"]
+    assert [m.content for m in messages] == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_operator_note_is_persisted_as_note_role(service):
+    execution_service, store, _ = service
+    tracker = ExecutionTracker()
+
+    with (
+        patch("app.orchestrator.service.get_tracker", return_value=tracker),
+        patch(
+            "app.orchestrator.service.agent_turn",
+            new_callable=AsyncMock,
+            return_value=FakeResult(text="ack", session_id="sid-note"),
+        ) as mock_at,
+    ):
+        result = await execution_service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="web:session:test",
+                channel="web",
+                message="[Operator note from dashboard]\nPin this context.",
+                persist_user_message=True,
+                stored_role="note",
+                stored_message="Pin this context.",
+            )
+        )
+
+    assert result is not None
+    assert (
+        mock_at.await_args.args[0]
+        == "[Operator note from dashboard]\nPin this context."
+    )
+    messages = store.get_messages("web:session:test")
+    assert [m.role for m in messages] == ["note", "assistant"]
+    assert messages[0].content == "Pin this context."

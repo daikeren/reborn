@@ -83,6 +83,7 @@ MONITOR_PAGE_HTML = """<!doctype html>
       <h1>Session Monitor</h1>
       <div class="sub">Real-time visibility into active and recently completed agent sessions.</div>
       <div class="nav">
+        <a href="/dashboard">Dashboard</a>
         <a href="/history">History</a>
         <a href="/health">Health</a>
       </div>

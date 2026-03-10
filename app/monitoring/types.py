@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
 
 class ExecutionEventKind(str, Enum):
@@ -48,34 +49,51 @@ def make_event(kind: ExecutionEventKind, **data: Any) -> ExecutionEvent:
 @dataclass
 class ExecutionStatus:
     session_key: str
+    execution_id: str = field(default_factory=lambda: uuid4().hex)
     channel: str | None = None
     backend: str | None = None
     started_at: float = field(default_factory=time.time)
-    status: str = "running"  # running | completed | failed
+    status: str = "running"  # running | completed | failed | cancelled
     current_turn: int = 0
     tools_used: list[str] = field(default_factory=list)
     events: list[ExecutionEvent] = field(default_factory=list)
     completed_at: float | None = None
     elapsed_ms: int | None = None
     reply_preview: str | None = None
+    partial_reply: str = ""
     error_message: str | None = None
 
     _MAX_EVENTS = 500
+    _MAX_PARTIAL_REPLY = 16_000
 
     def add_event(self, event: ExecutionEvent) -> None:
         if len(self.events) < self._MAX_EVENTS:
             self.events.append(event)
+        if event.kind == ExecutionEventKind.TEXT_CHUNK:
+            text = str(event.data.get("text", ""))
+            if text:
+                combined = self.partial_reply + text
+                if len(combined) > self._MAX_PARTIAL_REPLY:
+                    combined = combined[-self._MAX_PARTIAL_REPLY :]
+                self.partial_reply = combined
 
     def mark_completed(self, reply_text: str, elapsed_ms: int) -> None:
         self.status = "completed"
         self.completed_at = time.time()
         self.elapsed_ms = elapsed_ms
+        self.partial_reply = reply_text
         self.reply_preview = (
             reply_text[:500] + "..." if len(reply_text) > 500 else reply_text
         )
 
     def mark_failed(self, error_message: str, elapsed_ms: int) -> None:
         self.status = "failed"
+        self.completed_at = time.time()
+        self.elapsed_ms = elapsed_ms
+        self.error_message = error_message
+
+    def mark_cancelled(self, error_message: str, elapsed_ms: int) -> None:
+        self.status = "cancelled"
         self.completed_at = time.time()
         self.elapsed_ms = elapsed_ms
         self.error_message = error_message

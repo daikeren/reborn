@@ -16,13 +16,15 @@ from app.scheduler.prompts import load_scheduled_job_prompts
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
+_scheduler_bot: Bot | None = None
+_scheduler_execution_service: ExecutionService | None = None
 
 
 async def start_scheduler(
     bot: Bot, execution_service: ExecutionService
 ) -> AsyncIOScheduler:
     """Start the APScheduler with proactive jobs. Singleton — safe to call twice."""
-    global _scheduler
+    global _scheduler, _scheduler_bot, _scheduler_execution_service
     if _scheduler is not None:
         return _scheduler
 
@@ -59,6 +61,8 @@ async def start_scheduler(
 
     scheduler.start()
     _scheduler = scheduler
+    _scheduler_bot = bot
+    _scheduler_execution_service = execution_service
     logger.info(
         "Scheduler started with %s jobs: %s",
         len(scheduled_jobs),
@@ -67,10 +71,34 @@ async def start_scheduler(
     return scheduler
 
 
+async def reload_scheduler() -> AsyncIOScheduler | None:
+    global _scheduler
+    if _scheduler is None:
+        return None
+    bot = _scheduler_bot
+    execution_service = _scheduler_execution_service
+    if bot is None or execution_service is None:
+        return None
+    shutdown_scheduler()
+    return await start_scheduler(bot, execution_service)
+
+
+async def run_job_now(name: str) -> bool:
+    bot = _scheduler_bot
+    execution_service = _scheduler_execution_service
+    chat_id = settings.allowed_telegram_user_id
+    if bot is None or execution_service is None or chat_id is None:
+        return False
+    await _run_job(name, bot, chat_id, execution_service)
+    return True
+
+
 def shutdown_scheduler() -> None:
     """Gracefully shut down the scheduler if running."""
-    global _scheduler
+    global _scheduler, _scheduler_bot, _scheduler_execution_service
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         logger.info("Scheduler shut down")
         _scheduler = None
+    _scheduler_bot = None
+    _scheduler_execution_service = None

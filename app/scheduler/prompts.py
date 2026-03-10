@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 from app.config import settings
 from app.frontmatter import parse_frontmatter
 
@@ -17,6 +19,7 @@ class JobPrompt:
     max_turns: int = 10
     suppress_token: str | None = None
     schedule: str | None = None
+    enabled: bool = True
 
     def should_suppress(self, text: str) -> bool:
         if self.suppress_token is None:
@@ -60,12 +63,17 @@ def _load_prompt(path: Path) -> JobPrompt:
     if schedule is not None and not isinstance(schedule, str):
         raise ValueError(f"'schedule' must be a string in prompt: {path}")
 
+    enabled = meta.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError(f"'enabled' must be a boolean in prompt: {path}")
+
     return JobPrompt(
         prompt=body,
         tools=tools,
         max_turns=max_turns,
         suppress_token=suppress_token,
         schedule=schedule,
+        enabled=enabled,
     )
 
 
@@ -94,7 +102,7 @@ def load_scheduled_job_prompts() -> list[ScheduledJobPrompt]:
                 continue
 
             prompt = _load_prompt(path)
-            if prompt.schedule is None:
+            if prompt.schedule is None or not prompt.enabled:
                 continue
 
             scheduled_by_name[path.stem] = ScheduledJobPrompt(
@@ -103,3 +111,21 @@ def load_scheduled_job_prompts() -> list[ScheduledJobPrompt]:
                 path=path,
             )
     return list(scheduled_by_name.values())
+
+
+def render_job_prompt(job: JobPrompt) -> str:
+    meta = {
+        "schedule": job.schedule,
+        "tools": job.tools,
+        "max_turns": job.max_turns,
+        "suppress_token": job.suppress_token,
+        "enabled": job.enabled,
+    }
+    cleaned = {key: value for key, value in meta.items() if value is not None}
+    frontmatter = yaml.safe_dump(
+        cleaned,
+        sort_keys=False,
+        allow_unicode=False,
+    ).strip()
+    body = job.prompt.rstrip() + "\n"
+    return f"---\n{frontmatter}\n---\n{body}"

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 TELEGRAM_PENDING_NEW = "__pending_new__"
+PENDING_SDK_SESSION_ID = "__pending_sdk_session__"
 
 
 @dataclass
@@ -128,8 +129,52 @@ class SessionStore:
         assert rec is not None
         return rec
 
+    def create_placeholder_session(
+        self,
+        session_key: str,
+        *,
+        chat_key: str | None = None,
+    ) -> SessionRecord:
+        return self.upsert(
+            session_key,
+            PENDING_SDK_SESSION_ID,
+            chat_key=chat_key,
+        )
+
     def count_sessions(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM sessions").fetchone()
+        return int(row[0]) if row else 0
+
+    def count_session_summaries(
+        self,
+        *,
+        channel: str | None = None,
+        query: str | None = None,
+    ) -> int:
+        clauses = ["1 = 1"]
+        params: list[object] = []
+        if channel:
+            clauses.append(self._channel_clause(channel))
+        if query:
+            clauses.append(
+                """(
+                    s.session_key LIKE ?
+                    OR COALESCE(s.chat_key, '') LIKE ?
+                    OR COALESCE((
+                        SELECT m.content
+                        FROM messages m
+                        WHERE m.session_key = s.session_key AND m.role = 'user'
+                        ORDER BY m.id ASC
+                        LIMIT 1
+                    ), '') LIKE ?
+                )"""
+            )
+            pattern = f"%{query}%"
+            params.extend([pattern, pattern, pattern])
+        row = self._conn.execute(
+            f"SELECT COUNT(*) FROM sessions s WHERE {' AND '.join(clauses)}",
+            params,
+        ).fetchone()
         return int(row[0]) if row else 0
 
     def list_sessions(self, limit: int = 100, offset: int = 0) -> list[SessionRecord]:
@@ -148,8 +193,39 @@ class SessionStore:
     def list_session_summaries(
         self, limit: int = 100, offset: int = 0
     ) -> list[SessionRecord]:
+        return self.search_session_summaries(limit=limit, offset=offset)
+
+    def search_session_summaries(
+        self,
+        *,
+        channel: str | None = None,
+        query: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[SessionRecord]:
+        clauses = ["1 = 1"]
+        params: list[object] = []
+        if channel:
+            clauses.append(self._channel_clause(channel))
+        if query:
+            clauses.append(
+                """(
+                    s.session_key LIKE ?
+                    OR COALESCE(s.chat_key, '') LIKE ?
+                    OR COALESCE((
+                        SELECT m.content
+                        FROM messages m
+                        WHERE m.session_key = s.session_key AND m.role = 'user'
+                        ORDER BY m.id ASC
+                        LIMIT 1
+                    ), '') LIKE ?
+                )"""
+            )
+            pattern = f"%{query}%"
+            params.extend([pattern, pattern, pattern])
+        params.extend([limit, offset])
         rows = self._conn.execute(
-            """
+            f"""
             SELECT
                 s.session_key,
                 s.sdk_session_id,
@@ -165,11 +241,12 @@ class SessionStore:
                     LIMIT 1
                 ) AS first_user_message
             FROM sessions s
+            WHERE {" AND ".join(clauses)}
             ORDER BY s.last_active DESC
             LIMIT ?
             OFFSET ?
             """,
-            (limit, offset),
+            params,
         ).fetchall()
         return [self._session_record_from_summary_row(row) for row in rows]
 
@@ -356,6 +433,18 @@ class SessionStore:
         if session_key.startswith("telegram:chat:"):
             return session_key
         return None
+
+    @staticmethod
+    def _channel_clause(channel: str) -> str:
+        if channel == "telegram":
+            return "(s.session_key LIKE 'telegram:%' OR COALESCE(s.chat_key, '') LIKE 'telegram:%')"
+        if channel == "slack":
+            return "s.session_key LIKE 'slack:%'"
+        if channel == "scheduler":
+            return "s.session_key LIKE 'scheduler:%'"
+        if channel == "web":
+            return "s.session_key LIKE 'web:%'"
+        return "1 = 0"
 
     def _session_record_from_row(self, row) -> SessionRecord:
         (

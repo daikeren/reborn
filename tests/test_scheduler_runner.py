@@ -180,3 +180,26 @@ async def test_runner_registers_generic_job_callable(
 
     run_job.assert_awaited_once_with("heartbeat", mock_bot, 0, execution_service)
     scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_disabled_job_is_not_registered(
+    workspace: Path, mock_bot, execution_service
+):
+    _write_prompt(
+        workspace,
+        "disabled_job",
+        """\
+---
+schedule: "0 12 * * *"
+enabled: false
+---
+Disabled.
+""",
+    )
+
+    from app.scheduler.runner import start_scheduler
+
+    scheduler = await start_scheduler(mock_bot, execution_service)
+    assert "disabled_job" not in {job.id for job in scheduler.get_jobs()}
+    scheduler.shutdown(wait=False)

@@ -28,7 +28,7 @@ def test_finish_moves_to_completed():
     tracker = ExecutionTracker()
     ex = tracker.start_execution("sess:1")
     ex.mark_completed("reply text", 1234)
-    tracker.finish_execution("sess:1")
+    tracker.finish_execution(ex.execution_id)
 
     assert tracker.list_active() == []
     completed = tracker.list_completed()
@@ -46,14 +46,16 @@ def test_finish_nonexistent_is_noop():
 
 def test_get_active_and_completed():
     tracker = ExecutionTracker()
-    tracker.start_execution("sess:1")
-    assert tracker.get_active("sess:1") is not None
+    execution = tracker.start_execution("sess:1")
+    assert tracker.get_active(execution.execution_id) is not None
+    assert tracker.get_active_for_session("sess:1") is not None
     assert tracker.get_active("nonexistent") is None
 
-    tracker.get_active("sess:1").mark_completed("ok", 100)
-    tracker.finish_execution("sess:1")
-    assert tracker.get_active("sess:1") is None
-    assert tracker.get_completed("sess:1") is not None
+    tracker.get_active(execution.execution_id).mark_completed("ok", 100)
+    tracker.finish_execution(execution.execution_id)
+    assert tracker.get_active(execution.execution_id) is None
+    assert tracker.get_completed(execution.execution_id) is not None
+    assert tracker.get_latest_completed_for_session("sess:1") is not None
     assert tracker.get_completed("nonexistent") is None
 
 
@@ -63,7 +65,7 @@ def test_completed_ring_buffer_eviction():
         key = f"sess:{i}"
         ex = tracker.start_execution(key)
         ex.mark_completed("ok", 100)
-        tracker.finish_execution(key)
+        tracker.finish_execution(ex.execution_id)
 
     completed = tracker.list_completed()
     assert len(completed) == 50
@@ -72,8 +74,8 @@ def test_completed_ring_buffer_eviction():
     # Oldest kept should be sess:10
     assert completed[-1].session_key == "sess:10"
     # Evicted sessions should not be retrievable
-    assert tracker.get_completed("sess:0") is None
-    assert tracker.get_completed("sess:9") is None
+    assert tracker.get_latest_completed_for_session("sess:0") is None
+    assert tracker.get_latest_completed_for_session("sess:9") is None
 
 
 def test_event_cap():
@@ -126,7 +128,37 @@ def test_completed_list_is_most_recent_first():
         key = f"sess:{i}"
         ex = tracker.start_execution(key)
         ex.mark_completed("ok", 100)
-        tracker.finish_execution(key)
+        tracker.finish_execution(ex.execution_id)
 
     completed = tracker.list_completed()
     assert [c.session_key for c in completed] == ["sess:2", "sess:1", "sess:0"]
+
+
+def test_text_chunk_updates_partial_reply():
+    ex = ExecutionStatus(session_key="sess:1")
+    ex.add_event(make_event(ExecutionEventKind.TEXT_CHUNK, text="hello "))
+    ex.add_event(make_event(ExecutionEventKind.TEXT_CHUNK, text="world"))
+    assert ex.partial_reply == "hello world"
+
+
+def test_mark_cancelled_fields():
+    ex = ExecutionStatus(session_key="sess:1")
+    ex.mark_cancelled("stopped", 500)
+    assert ex.status == "cancelled"
+    assert ex.elapsed_ms == 500
+    assert ex.error_message == "stopped"
+
+
+def test_list_for_session_includes_active_and_completed():
+    tracker = ExecutionTracker()
+    first = tracker.start_execution("sess:1")
+    first.mark_completed("ok", 100)
+    tracker.finish_execution(first.execution_id)
+    second = tracker.start_execution("sess:1")
+
+    items = tracker.list_for_session("sess:1")
+
+    assert [item.execution_id for item in items] == [
+        second.execution_id,
+        first.execution_id,
+    ]

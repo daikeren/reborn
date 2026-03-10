@@ -22,6 +22,15 @@ class SkillDefinition:
     model: ClaudeSkillModel | None = None
 
 
+@dataclass(frozen=True)
+class SkillStatus:
+    name: str
+    path: Path
+    status: str
+    description: str | None = None
+    error: str | None = None
+
+
 def load_skill(path: Path) -> tuple[str, SkillDefinition]:
     """Parse a single SKILL.md file into (name, SkillDefinition).
 
@@ -75,4 +84,57 @@ def load_all_skills() -> dict[str, SkillDefinition]:
         except Exception:
             logger.warning("Skipping invalid skill: %s", entry.name, exc_info=True)
 
+    return result
+
+
+def inspect_skills() -> list[SkillStatus]:
+    skills_dir = settings.workspace_dir / "skills"
+    if not skills_dir.is_dir():
+        return []
+
+    result: list[SkillStatus] = []
+    for entry in sorted(skills_dir.iterdir()):
+        if entry.is_symlink():
+            result.append(
+                SkillStatus(
+                    name=entry.name,
+                    path=entry,
+                    status="blocked",
+                    error="Symlink skill directories are skipped",
+                )
+            )
+            continue
+        if not entry.is_dir():
+            continue
+        skill_file = entry / SKILL_FILENAME
+        if not skill_file.exists():
+            result.append(
+                SkillStatus(
+                    name=entry.name,
+                    path=entry,
+                    status="blocked",
+                    error="Missing SKILL.md",
+                )
+            )
+            continue
+        try:
+            name, defn = load_skill(skill_file)
+            result.append(
+                SkillStatus(
+                    name=name,
+                    path=skill_file,
+                    status="loaded",
+                    description=defn.description,
+                )
+            )
+        except Exception as exc:
+            logger.warning("Skipping invalid skill: %s", entry.name, exc_info=True)
+            result.append(
+                SkillStatus(
+                    name=entry.name,
+                    path=skill_file,
+                    status="blocked",
+                    error=str(exc),
+                )
+            )
     return result
