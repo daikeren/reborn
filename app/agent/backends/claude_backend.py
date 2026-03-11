@@ -35,6 +35,8 @@ from app.monitoring.types import EventCallback, ExecutionEventKind, make_event
 
 logger = logging.getLogger(__name__)
 
+CLAUDE_DEFAULT_TOOLS = [*DEFAULT_TOOLS, "Bash", "Write"]
+
 
 class ClaudeBackend:
     name = "claude"
@@ -146,7 +148,7 @@ class ClaudeBackend:
         on_question: QuestionCallback | None = None,
     ) -> AgentResult:
         model = model or settings.chat_model
-        tools = allowed_tools if allowed_tools is not None else DEFAULT_TOOLS
+        tools = allowed_tools if allowed_tools is not None else CLAUDE_DEFAULT_TOOLS
         servers = self._build_mcp_servers(mcp_servers)
 
         env: dict[str, str] = {}
@@ -187,7 +189,10 @@ class ClaudeBackend:
             permission_mode="bypassPermissions",
             max_turns=max_turns,
             env=env,
-            add_dirs=[str(path) for path in settings.extra_writable_roots],
+            add_dirs=[
+                str(settings.workspace_dir),
+                *(str(path) for path in settings.extra_writable_roots),
+            ],
             agents=agents,
             can_use_tool=can_use_tool_cb,
             hooks=hooks,

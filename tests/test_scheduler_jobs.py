@@ -70,12 +70,21 @@ schedule: "30 6 * * *"
 tools:
   - mcp__memory__memory_search
   - mcp__memory__memory_update_core
-max_turns: 12
+  - Write
+max_turns: 20
 suppress_token: CONTEXT_REFRESH_OK
+enabled: true
 ---
 Refresh context.
 Do NOT update `Facts` automatically.
-Do NOT create or edit any files.
+Create a new skill only when a workflow has clear reuse value.
+Strong signals include repeated occurrence or a complex multi-step workflow likely to recur.
+Do NOT modify existing skill files.
+Use this exact section structure:
+- Memory updates applied
+- Fact candidates for review
+- Skills created
+- Skill suggestions
 """,
     )
     _write_prompt(
@@ -298,9 +307,17 @@ Use gog.
     )
     assert "Please use terse answers and check calendar before email." in request.prompt
     assert "scheduler:heartbeat" not in request.prompt
-    assert request.prompt.endswith(
-        "Refresh context.\nDo NOT update `Facts` automatically.\nDo NOT create or edit any files.\n"
+    assert (
+        "Create a new skill only when a workflow has clear reuse value."
+        in request.prompt
     )
+    assert (
+        "Strong signals include repeated occurrence or a complex multi-step workflow likely to recur."
+        in request.prompt
+    )
+    assert "Do NOT modify existing skill files." in request.prompt
+    assert "- Skills created" in request.prompt
+    assert "- Skill suggestions" in request.prompt
 
 
 @pytest.mark.asyncio
@@ -336,9 +353,11 @@ async def test_context_refresh_uses_memory_update_tool_only_for_core_updates(
     assert request.allowed_tools == [
         "mcp__memory__memory_search",
         "mcp__memory__memory_update_core",
+        "Write",
     ]
     assert "Do NOT update `Facts` automatically." in request.prompt
-    assert "Do NOT create or edit any files." in request.prompt
+    assert "clear reuse value" in request.prompt
+    assert "complex multi-step workflow likely to recur" in request.prompt
 
 
 @pytest.mark.asyncio

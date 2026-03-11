@@ -10,6 +10,7 @@ from app.main import (
     SendOperatorNoteRequest,
     SendWebMessageRequest,
     UpdateJobRequest,
+    api_reload_scheduler,
     app,
     dashboard_config,
     dashboard_create_web_session,
@@ -241,3 +242,25 @@ Missing description.
         item["name"] == "bad" and item["status"] == "blocked"
         for item in skills["skills"]
     )
+
+
+@pytest.mark.asyncio
+async def test_api_reload_scheduler_when_not_initialized(dashboard_state):
+    with patch("app.main.reload_scheduler", new=AsyncMock(return_value=None)):
+        result = await api_reload_scheduler()
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "scheduler not initialized"
+    assert result["jobs"] == 0
+
+
+@pytest.mark.asyncio
+async def test_api_reload_scheduler_returns_job_count(workspace: Path, dashboard_state):
+    mock_scheduler = Mock()
+    mock_scheduler.get_jobs.return_value = ["job1", "job2", "job3"]
+
+    with patch("app.main.reload_scheduler", new=AsyncMock(return_value=mock_scheduler)):
+        result = await api_reload_scheduler()
+
+    assert result["status"] == "reloaded"
+    assert result["jobs"] == 3

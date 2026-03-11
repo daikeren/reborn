@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from uuid import uuid4
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -530,6 +530,14 @@ async def dashboard_disable_job(name: str):
     )
     await reload_scheduler()
     return _job_payload(saved)
+
+
+@app.post("/api/scheduler/reload")
+async def api_reload_scheduler():
+    scheduler = await reload_scheduler()
+    if scheduler is None:
+        return {"status": "skipped", "reason": "scheduler not initialized", "jobs": 0}
+    return {"status": "reloaded", "jobs": len(scheduler.get_jobs())}
 
 
 @app.get("/api/dashboard/config")
