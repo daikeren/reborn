@@ -35,7 +35,7 @@ Reborn is a personal AI assistant service that integrates Telegram and Slack, wi
 - Session Store: `SQLite` (WAL)
 - Agent Runtime:
   - Backend factory (`codex` / `claude`)
-  - System prompt assembly from `workspace/SOUL.md`, `workspace/MEMORY.md`, recent two-day memory logs, and loaded skills
+  - System prompt assembly from repo-managed workflow instructions, `workspace/SOUL.md`, `workspace/MEMORY.md`, recent two-day memory logs, and loaded skills
 - MCP: `app.mcp.server` exposes memory tools
 
 ## Quick Start

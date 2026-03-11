@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.agent.system_prompt import (
+    MANAGED_INSTRUCTIONS_PATH,
     SLACK_FORMATTING,
     TELEGRAM_FORMATTING,
     build_system_prompt,
@@ -40,3 +41,21 @@ def test_default_channel_is_none(workspace: Path):
     prompt = build_system_prompt()
     assert SLACK_FORMATTING not in prompt
     assert TELEGRAM_FORMATTING not in prompt
+
+
+def test_prompt_includes_managed_instructions(workspace: Path):
+    prompt = build_system_prompt()
+    managed = MANAGED_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+
+    assert "You are Reborn." in prompt
+    assert managed in prompt
+    assert "Jobs are defined in `workspace/jobs/{name}.md`" in prompt
+
+
+def test_prompt_includes_managed_instructions_without_soul(workspace: Path):
+    (workspace / "SOUL.md").unlink()
+
+    prompt = build_system_prompt()
+
+    assert "## Managed Workflow Rules" in prompt
+    assert "Jobs are defined in `workspace/jobs/{name}.md`" in prompt

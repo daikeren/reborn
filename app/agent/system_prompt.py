@@ -38,12 +38,15 @@ You are replying in Telegram. Use HTML formatting:
 - Do NOT use tables (| --- | syntax) — Telegram cannot render them. Use bullet lists or labeled lines instead.
 """
 
+MANAGED_INSTRUCTIONS_PATH = Path(__file__).with_name("managed_instructions.md")
+
 
 def build_system_prompt(
     skills: dict[str, str] | None = None,
     channel: str | None = None,
 ) -> str:
     ws = settings.workspace_dir
+    managed = _read_file(MANAGED_INSTRUCTIONS_PATH)
     soul = _read_file(ws / "SOUL.md")
     memory = _read_file(ws / "MEMORY.md")
 
@@ -52,7 +55,7 @@ def build_system_prompt(
     today_log = _read_file(ws / "memory" / f"{today.isoformat()}.md")
     yesterday_log = _read_file(ws / "memory" / f"{yesterday.isoformat()}.md")
 
-    parts = [soul]
+    parts = [part for part in (managed, soul) if part]
 
     if memory:
         parts.append(
