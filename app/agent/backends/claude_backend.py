@@ -26,6 +26,13 @@ from claude_agent_sdk.types import (
 )
 
 from app.agent.backends.base import DEFAULT_TOOLS, QuestionCallback
+from app.agent.image_fallback import (
+    build_retry_instruction,
+    build_text_attachment_entries,
+    failed_image_attachment_names,
+    has_image_attachments,
+    is_recoverable_image_error,
+)
 from app.agent.skills import load_all_skills
 from app.agent.system_prompt import build_system_prompt
 from app.agent.types import AgentError, AgentResult, Attachment
@@ -70,14 +77,20 @@ class ClaudeBackend:
         return agents, descriptions
 
     def _build_content(
-        self, message: str, attachments: list[Attachment] | None
+        self,
+        message: str,
+        attachments: list[Attachment] | None,
+        *,
+        fallback_image_retry: bool = False,
     ) -> str | list[dict[str, Any]]:
-        if not attachments:
+        if not attachments and not fallback_image_retry:
             return message
 
         blocks: list[dict[str, Any]] = []
-        for att in attachments:
-            if att.is_image:
+        if fallback_image_retry:
+            blocks.append({"type": "text", "text": build_retry_instruction(message)})
+        for att in attachments or []:
+            if att.is_image and not fallback_image_retry:
                 blocks.append(
                     {
                         "type": "image",
@@ -88,25 +101,14 @@ class ClaudeBackend:
                         },
                     }
                 )
-            else:
-                extracted = att.extract_text()
-                if extracted:
-                    blocks.append(
-                        {
-                            "type": "text",
-                            "text": f"[Content of {att.filename}]\n{extracted}",
-                        }
-                    )
-                else:
-                    blocks.append(
-                        {
-                            "type": "text",
-                            "text": f"[Attached file: {att.filename} ({att.mime_type}) — content could not be extracted]",
-                        }
-                    )
+        for text in build_text_attachment_entries(
+            attachments,
+            include_failed_images=fallback_image_retry,
+        ):
+            blocks.append({"type": "text", "text": text})
         if message:
             blocks.append({"type": "text", "text": message})
-        return blocks
+        return blocks or message
 
     def _build_can_use_tool(self, on_question: QuestionCallback) -> Any:
         """Return a can_use_tool callback that intercepts AskUserQuestion."""
@@ -131,6 +133,24 @@ class ClaudeBackend:
             return PermissionResultAllow(updated_input=tool_input)
 
         return _can_use_tool
+
+    async def _emit_image_retry_event(
+        self,
+        *,
+        on_event: EventCallback | None,
+        error_text: str,
+    ) -> None:
+        if on_event:
+            await on_event(
+                make_event(
+                    ExecutionEventKind.ERROR,
+                    text="Image upload failed upstream; retrying without image bytes.",
+                    recoverable=True,
+                    fallback="image_text_only",
+                    backend=self.name,
+                    error=error_text,
+                )
+            )
 
     async def agent_turn(
         self,
@@ -199,73 +219,156 @@ class ClaudeBackend:
         )
 
         content = self._build_content(message, attachments)
+        resume_id = session_id
+        used_image_fallback = False
 
-        async def _prompt_stream() -> AsyncIterator[dict]:
-            yield {
-                "type": "user",
-                "session_id": "",
-                "message": {"role": "user", "content": content},
-                "parent_tool_use_id": None,
-            }
+        while True:
 
-        texts: list[str] = []
-        result_session_id: str | None = None
+            async def _prompt_stream() -> AsyncIterator[dict]:
+                yield {
+                    "type": "user",
+                    "session_id": "",
+                    "message": {"role": "user", "content": content},
+                    "parent_tool_use_id": None,
+                }
 
-        try:
-            async for msg in query(prompt=_prompt_stream(), options=options):
-                if isinstance(msg, AssistantMessage):
-                    for block in msg.content:
-                        if isinstance(block, TextBlock):
-                            texts.append(block.text)
-                            if on_event:
-                                await on_event(
-                                    make_event(
-                                        ExecutionEventKind.TEXT_CHUNK, text=block.text
+            texts: list[str] = []
+            result_session_id = resume_id
+            result_error: str | None = None
+
+            run_options = ClaudeAgentOptions(
+                model=options.model,
+                system_prompt=options.system_prompt,
+                resume=resume_id,
+                allowed_tools=options.allowed_tools,
+                mcp_servers=options.mcp_servers,
+                permission_mode=options.permission_mode,
+                max_turns=options.max_turns,
+                env=options.env,
+                add_dirs=options.add_dirs,
+                agents=options.agents,
+                can_use_tool=options.can_use_tool,
+                hooks=options.hooks,
+            )
+
+            try:
+                async for msg in query(prompt=_prompt_stream(), options=run_options):
+                    if isinstance(msg, AssistantMessage):
+                        for block in msg.content:
+                            if isinstance(block, TextBlock):
+                                texts.append(block.text)
+                                if on_event:
+                                    await on_event(
+                                        make_event(
+                                            ExecutionEventKind.TEXT_CHUNK,
+                                            text=block.text,
+                                        )
                                     )
-                                )
-                        elif isinstance(block, ThinkingBlock):
-                            if on_event:
-                                text = getattr(block, "text", "") or ""
-                                await on_event(
-                                    make_event(ExecutionEventKind.THINKING, text=text)
-                                )
-                        elif isinstance(block, ToolUseBlock):
-                            if on_event:
-                                name = getattr(block, "name", "unknown")
-                                inp = str(getattr(block, "input", ""))
-                                await on_event(
-                                    make_event(
-                                        ExecutionEventKind.TOOL_USE,
-                                        tool=name,
-                                        input=inp,
+                            elif isinstance(block, ThinkingBlock):
+                                if on_event:
+                                    text = getattr(block, "text", "") or ""
+                                    await on_event(
+                                        make_event(
+                                            ExecutionEventKind.THINKING, text=text
+                                        )
                                     )
-                                )
-                        elif isinstance(block, ToolResultBlock):
-                            if on_event:
-                                output = str(getattr(block, "content", ""))
-                                await on_event(
-                                    make_event(
-                                        ExecutionEventKind.TOOL_RESULT, output=output
+                            elif isinstance(block, ToolUseBlock):
+                                if on_event:
+                                    name = getattr(block, "name", "unknown")
+                                    inp = str(getattr(block, "input", ""))
+                                    await on_event(
+                                        make_event(
+                                            ExecutionEventKind.TOOL_USE,
+                                            tool=name,
+                                            input=inp,
+                                        )
                                     )
-                                )
-                elif isinstance(msg, ResultMessage):
-                    result_session_id = msg.session_id
-                    if msg.is_error:
-                        logger.error("Agent turn error: %s", msg.result)
-                    if on_event:
-                        await on_event(make_event(ExecutionEventKind.TURN_COMPLETED))
-                elif isinstance(msg, SystemMessage) and msg.subtype == "init":
-                    sid = msg.data.get("session_id") if msg.data else None
-                    if sid:
-                        result_session_id = sid
-        except Exception as exc:
-            if texts and result_session_id:
-                partial = "\n".join(texts)
-                logger.warning("Agent turn partially failed: %s", exc)
-                return AgentResult(text=partial, session_id=result_session_id)
-            raise AgentError(f"Claude backend call failed: {exc}") from exc
+                            elif isinstance(block, ToolResultBlock):
+                                if on_event:
+                                    output = str(getattr(block, "content", ""))
+                                    await on_event(
+                                        make_event(
+                                            ExecutionEventKind.TOOL_RESULT,
+                                            output=output,
+                                        )
+                                    )
+                    elif isinstance(msg, ResultMessage):
+                        result_session_id = msg.session_id or result_session_id
+                        if msg.is_error:
+                            result_error = str(msg.result)
+                            logger.error("Agent turn error: %s", msg.result)
+                        if on_event:
+                            await on_event(
+                                make_event(ExecutionEventKind.TURN_COMPLETED)
+                            )
+                    elif isinstance(msg, SystemMessage) and msg.subtype == "init":
+                        sid = msg.data.get("session_id") if msg.data else None
+                        if sid:
+                            result_session_id = sid
+            except Exception as exc:
+                if texts and result_session_id:
+                    partial = "\n".join(texts)
+                    logger.warning("Agent turn partially failed: %s", exc)
+                    return AgentResult(text=partial, session_id=result_session_id)
+                if (
+                    not used_image_fallback
+                    and has_image_attachments(attachments)
+                    and is_recoverable_image_error(exc)
+                ):
+                    error_text = str(exc)
+                    logger.warning(
+                        "Recovering from image processing failure: backend=%s, session_id=%s, images=%s, error=%s",
+                        self.name,
+                        result_session_id or resume_id,
+                        failed_image_attachment_names(attachments),
+                        error_text,
+                    )
+                    await self._emit_image_retry_event(
+                        on_event=on_event,
+                        error_text=error_text,
+                    )
+                    content = self._build_content(
+                        message,
+                        attachments,
+                        fallback_image_retry=True,
+                    )
+                    resume_id = result_session_id or resume_id
+                    used_image_fallback = True
+                    continue
+                raise AgentError(f"Claude backend call failed: {exc}") from exc
 
-        return AgentResult(
-            text="\n".join(texts),
-            session_id=result_session_id,
-        )
+            if result_error:
+                if texts and result_session_id:
+                    return AgentResult(
+                        text="\n".join(texts), session_id=result_session_id
+                    )
+                if (
+                    not used_image_fallback
+                    and has_image_attachments(attachments)
+                    and is_recoverable_image_error(result_error)
+                ):
+                    logger.warning(
+                        "Recovering from image processing failure: backend=%s, session_id=%s, images=%s, error=%s",
+                        self.name,
+                        result_session_id or resume_id,
+                        failed_image_attachment_names(attachments),
+                        result_error,
+                    )
+                    await self._emit_image_retry_event(
+                        on_event=on_event,
+                        error_text=result_error,
+                    )
+                    content = self._build_content(
+                        message,
+                        attachments,
+                        fallback_image_retry=True,
+                    )
+                    resume_id = result_session_id or resume_id
+                    used_image_fallback = True
+                    continue
+                raise AgentError(f"Claude backend call failed: {result_error}")
+
+            return AgentResult(
+                text="\n".join(texts),
+                session_id=result_session_id,
+            )

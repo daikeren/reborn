@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 
 from app.agent.backends.codex_backend import CodexBackend
-from app.agent.types import AgentError, AgentResult
+from app.agent.types import AgentError
 
 
 @dataclass
@@ -17,13 +16,26 @@ class _Note:
 
 
 class _FakeCodexClient:
-    def __init__(self, notes: list[_Note], *, raise_after: Exception | None = None):
-        self.notes = notes
-        self.raise_after = raise_after
+    def __init__(
+        self,
+        notes: list[_Note] | list[list[_Note]],
+        *,
+        raise_after: Exception | list[Exception | None] | None = None,
+    ):
+        if notes and isinstance(notes[0], list):
+            self._turn_notes = notes
+        else:
+            self._turn_notes = [notes]
+        if isinstance(raise_after, list):
+            self._turn_errors = raise_after
+        else:
+            self._turn_errors = [raise_after]
         self.listed_skills: list[dict] = []
         self.start_kwargs: dict | None = None
         self.resume_kwargs: dict | None = None
         self.turn_kwargs: dict | None = None
+        self.turn_kwargs_history: list[dict] = []
+        self._stream_call = 0
 
     async def __aenter__(self):
         return self
@@ -44,10 +56,15 @@ class _FakeCodexClient:
 
     async def stream_turn(self, **kwargs):
         self.turn_kwargs = kwargs
-        for note in self.notes:
+        self.turn_kwargs_history.append(kwargs)
+        idx = min(self._stream_call, len(self._turn_notes) - 1)
+        self._stream_call += 1
+        for note in self._turn_notes[idx]:
             yield note
-        if self.raise_after:
-            raise self.raise_after
+        error_idx = min(idx, len(self._turn_errors) - 1)
+        error = self._turn_errors[error_idx] if self._turn_errors else None
+        if error:
+            raise error
 
 
 def _completed(thread_id: str = "thread-new", turn_id: str = "turn-1") -> _Note:
@@ -243,6 +260,78 @@ async def test_raises_when_no_partial_available(monkeypatch):
 
     with pytest.raises(AgentError):
         await backend.agent_turn("hello")
+
+
+@pytest.mark.asyncio
+async def test_image_failure_retries_without_image_payload(monkeypatch):
+    from app.agent.codex_client import CodexClientError
+    from app.agent.types import Attachment
+    from app.monitoring.types import ExecutionEventKind
+
+    client = _FakeCodexClient(
+        [
+            [],
+            [
+                _Note(
+                    "item/completed",
+                    {"item": {"type": "agentMessage", "text": "Recovered reply"}},
+                ),
+                _completed(),
+            ],
+        ],
+        raise_after=[
+            CodexClientError(
+                "turn/start failed: invalid_request_error: Could not process image"
+            ),
+            None,
+        ],
+    )
+    backend = _backend_with_client(client, monkeypatch)
+    events = []
+    attachment = Attachment(filename="photo.jpg", mime_type="image/jpeg", data=b"\xff")
+
+    async def _capture(event):
+        events.append(event)
+
+    result = await backend.agent_turn(
+        "Please help",
+        attachments=[attachment],
+        on_event=_capture,
+    )
+
+    assert result.text == "Recovered reply"
+    assert len(client.turn_kwargs_history) == 2
+    first_items = client.turn_kwargs_history[0]["input_items"]
+    second_items = client.turn_kwargs_history[1]["input_items"]
+    assert any(item["type"] == "image_url" for item in first_items)
+    assert not any(item["type"] == "image_url" for item in second_items)
+    assert any("image upload fallback" in item["text"] for item in second_items)
+    assert any("photo.jpg (image/jpeg)" in item["text"] for item in second_items)
+    assert (
+        client.turn_kwargs_history[0]["thread_id"]
+        == client.turn_kwargs_history[1]["thread_id"]
+    )
+    assert any(event.kind == ExecutionEventKind.ERROR for event in events)
+
+
+@pytest.mark.asyncio
+async def test_non_image_failure_does_not_retry(monkeypatch):
+    from app.agent.codex_client import CodexClientError
+    from app.agent.types import Attachment
+
+    client = _FakeCodexClient(
+        [],
+        raise_after=CodexClientError(
+            "turn/start failed: invalid_request_error: tool schema"
+        ),
+    )
+    backend = _backend_with_client(client, monkeypatch)
+    attachment = Attachment(filename="photo.jpg", mime_type="image/jpeg", data=b"\xff")
+
+    with pytest.raises(CodexClientError):
+        await backend.agent_turn("Please help", attachments=[attachment])
+
+    assert len(client.turn_kwargs_history) == 1
 
 
 @pytest.mark.asyncio

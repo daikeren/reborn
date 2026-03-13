@@ -7,6 +7,13 @@ from typing import Any
 
 from app.agent.backends.base import DEFAULT_TOOLS
 from app.agent.codex_client import CodexAppServerClient, CodexClientError
+from app.agent.image_fallback import (
+    build_retry_instruction,
+    build_text_attachment_entries,
+    failed_image_attachment_names,
+    has_image_attachments,
+    is_recoverable_image_error,
+)
 from app.agent.system_prompt import build_system_prompt
 from app.agent.types import AgentError, AgentResult, Attachment
 from app.config import settings
@@ -124,34 +131,67 @@ class CodexBackend:
         return skill_inputs, skill_descriptions
 
     def _build_attachment_items(
-        self, attachments: list[Attachment] | None
+        self,
+        attachments: list[Attachment] | None,
+        *,
+        include_failed_images: bool = False,
     ) -> list[dict[str, str]]:
         if not attachments:
             return []
 
         items: list[dict[str, str]] = []
         for att in attachments:
-            if att.is_image:
+            if att.is_image and not include_failed_images:
                 b64 = base64.b64encode(att.data).decode()
                 data_uri = f"data:{att.mime_type};base64,{b64}"
                 items.append({"type": "image_url", "image_url": data_uri})
-            else:
-                extracted = att.extract_text()
-                if extracted:
-                    items.append(
-                        {
-                            "type": "text",
-                            "text": f"[Content of {att.filename}]\n{extracted}",
-                        }
-                    )
-                else:
-                    items.append(
-                        {
-                            "type": "text",
-                            "text": f"[Attached file: {att.filename} ({att.mime_type}) — content could not be extracted]",
-                        }
-                    )
+        for text in build_text_attachment_entries(
+            attachments,
+            include_failed_images=include_failed_images,
+        ):
+            items.append({"type": "text", "text": text})
         return items
+
+    def _build_input_items(
+        self,
+        message: str,
+        attachments: list[Attachment] | None,
+        *,
+        skill_inputs: list[dict[str, str]],
+        fallback_image_retry: bool = False,
+    ) -> list[dict[str, str]]:
+        items: list[dict[str, str]] = []
+        if fallback_image_retry:
+            items.append({"type": "text", "text": build_retry_instruction(message)})
+        if message or not fallback_image_retry:
+            items.append({"type": "text", "text": message})
+        attachment_items = self._build_attachment_items(
+            attachments,
+            include_failed_images=fallback_image_retry,
+        )
+        if attachment_items:
+            items.extend(attachment_items)
+        if skill_inputs:
+            items.extend(skill_inputs)
+        return items
+
+    async def _emit_image_retry_event(
+        self,
+        *,
+        on_event: EventCallback | None,
+        error_text: str,
+    ) -> None:
+        if on_event:
+            await on_event(
+                make_event(
+                    ExecutionEventKind.ERROR,
+                    text="Image upload failed upstream; retrying without image bytes.",
+                    recoverable=True,
+                    fallback="image_text_only",
+                    backend=self.name,
+                    error=error_text,
+                )
+            )
 
     async def agent_turn(
         self,
@@ -208,22 +248,23 @@ class CodexBackend:
             except Exception as exc:
                 raise AgentError(f"Failed to start Codex thread: {exc}") from exc
 
-            input_items: list[dict[str, str]] = [{"type": "text", "text": safe_message}]
-            attachment_items = self._build_attachment_items(attachments)
-            if attachment_items:
-                input_items.extend(attachment_items)
-            if skill_inputs:
-                input_items.extend(skill_inputs)
+            input_items = self._build_input_items(
+                safe_message,
+                attachments,
+                skill_inputs=skill_inputs,
+            )
 
             latest_final_text: str | None = None
             final_messages_seen = 0
             result_session_id: str | None = thread_id
             _compacted = False
+            _used_image_fallback = False
 
-            for _attempt in range(2):
+            while True:
                 latest_final_text = None
                 final_messages_seen = 0
                 _context_window_exceeded = False
+                recoverable_image_error: str | None = None
 
                 try:
                     async for note in client.stream_turn(
@@ -315,7 +356,7 @@ class CodexBackend:
                                     _context_window_exceeded = True
                                 else:
                                     raise AgentError(f"Codex turn failed: {error}")
-                except (CodexClientError, AgentError):
+                except (CodexClientError, AgentError) as exc:
                     if latest_final_text is not None and result_session_id:
                         logger.warning(
                             "Agent turn partially failed; returning partial output"
@@ -323,7 +364,14 @@ class CodexBackend:
                         return AgentResult(
                             text=latest_final_text, session_id=result_session_id
                         )
-                    raise
+                    if (
+                        not _used_image_fallback
+                        and has_image_attachments(attachments)
+                        and is_recoverable_image_error(exc)
+                    ):
+                        recoverable_image_error = str(exc)
+                    else:
+                        raise
                 except Exception as exc:
                     if latest_final_text is not None and result_session_id:
                         logger.warning(
@@ -332,7 +380,36 @@ class CodexBackend:
                         return AgentResult(
                             text=latest_final_text, session_id=result_session_id
                         )
-                    raise AgentError(f"Agent call failed: {exc}") from exc
+                    if (
+                        not _used_image_fallback
+                        and has_image_attachments(attachments)
+                        and is_recoverable_image_error(exc)
+                    ):
+                        recoverable_image_error = str(exc)
+                    else:
+                        raise AgentError(f"Agent call failed: {exc}") from exc
+
+                if recoverable_image_error:
+                    image_names = failed_image_attachment_names(attachments)
+                    logger.warning(
+                        "Recovering from image processing failure: backend=%s, thread_id=%s, images=%s, error=%s",
+                        self.name,
+                        thread_id,
+                        image_names,
+                        recoverable_image_error,
+                    )
+                    await self._emit_image_retry_event(
+                        on_event=on_event,
+                        error_text=recoverable_image_error,
+                    )
+                    input_items = self._build_input_items(
+                        safe_message,
+                        attachments,
+                        skill_inputs=skill_inputs,
+                        fallback_image_retry=True,
+                    )
+                    _used_image_fallback = True
+                    continue
 
                 if _context_window_exceeded:
                     logger.info(

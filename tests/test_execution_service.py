@@ -8,6 +8,7 @@ import pytest
 
 from app.agent.types import Attachment
 from app.monitoring.tracker import ExecutionTracker
+from app.monitoring.types import ExecutionEventKind, make_event
 from app.orchestrator import ExecutionService, InteractiveExecutionRequest
 from app.sessions.manager import SessionManager
 from app.sessions.store import SessionStore
@@ -471,3 +472,48 @@ async def test_operator_note_is_persisted_as_note_role(service):
     messages = store.get_messages("web:session:test")
     assert [m.role for m in messages] == ["note", "assistant"]
     assert messages[0].content == "Pin this context."
+
+
+@pytest.mark.asyncio
+async def test_run_interactive_completes_after_recoverable_error_event(service):
+    execution_service, _, _ = service
+    tracker = ExecutionTracker()
+
+    async def recovered_turn(*args, **kwargs):
+        on_event = kwargs["on_event"]
+        await on_event(
+            make_event(
+                ExecutionEventKind.ERROR,
+                text="Image upload failed upstream; retrying without image bytes.",
+                recoverable=True,
+                fallback="image_text_only",
+                backend="codex",
+            )
+        )
+        return FakeResult(text="Recovered reply", session_id="sid-recovered")
+
+    with (
+        patch("app.orchestrator.service.get_tracker", return_value=tracker),
+        patch("app.orchestrator.service.agent_turn", side_effect=recovered_turn),
+    ):
+        result = await execution_service.run_interactive(
+            InteractiveExecutionRequest(
+                session_key="test:recover",
+                channel="telegram",
+                message="look at this",
+                attachments=[
+                    Attachment(
+                        filename="photo.jpg",
+                        mime_type="image/jpeg",
+                        data=b"\xff\xd8",
+                    )
+                ],
+            )
+        )
+
+    assert result is not None
+    assert result.text == "Recovered reply"
+    completed = tracker.list_completed()
+    assert len(completed) == 1
+    assert completed[0].status == "completed"
+    assert any(event.kind == ExecutionEventKind.ERROR for event in completed[0].events)
